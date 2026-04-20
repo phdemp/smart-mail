@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IntelliMail — Dashboard</title>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js"></script>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+
+<div class="app-shell" x-data="appState()" x-init="init()">
+
+  <!-- LEFT SIDEBAR -->
+  <aside class="sidebar" :class="{'collapsed': sidebarCollapsed}">
+
+    <!-- Logo -->
+    <div class="sidebar-logo">
+      <span class="sidebar-brand">✉ IntelliMail</span>
+      <div class="sidebar-logo-actions">
+        <button class="theme-btn sidebar-expand-only" @click="toggleTheme()"
+                :title="theme==='dark'?'Light mode':'Dark mode'"
+                x-text="theme==='dark'?'☀':'🌙'"></button>
+        <button class="sidebar-toggle" @click="toggleSidebar()" :title="sidebarCollapsed?'Expand':'Collapse'">
+          <span x-text="sidebarCollapsed ? '›' : '‹'"></span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Smart Folders (loaded via HTMX) -->
+    <div id="sidebar-nav"
+         hx-get="/api/sidebar"
+         hx-trigger="load, statsUpdate from:body"
+         hx-swap="innerHTML"
+         style="flex:1;overflow-y:auto;">
+      <!-- Loading state -->
+      <div style="padding:16px;">
+        <div class="skeleton" style="height:32px;margin-bottom:8px;"></div>
+        <div class="skeleton" style="height:32px;margin-bottom:8px;"></div>
+        <div class="skeleton" style="height:32px;margin-bottom:8px;"></div>
+        <div class="skeleton" style="height:32px;margin-bottom:8px;"></div>
+        <div class="skeleton" style="height:32px;"></div>
+      </div>
+    </div>
+
+    <!-- Bottom bar: status dot + Settings + Disconnect -->
+    <div class="sidebar-bottom" style="padding:8px 12px;border-top:1px solid var(--border);display:flex;align-items:center;gap:6px;">
+
+      <!-- Status dot (always visible, reflects IMAP state) -->
+      <span :class="{'sync-live': syncMode==='idle'}"
+            :style="{
+              fontSize:'8px', flexShrink:0,
+              color: syncMode==='idle'?'var(--accent-cyan)':syncMode==='polling'?'var(--accent-amber)':syncMode==='disconnected'?'var(--accent-red)':'var(--text-muted)'
+            }"
+            :title="syncMode==='idle'?'Live IDLE':syncMode==='polling'?'Polling':syncMode==='disconnected'?'Offline':'Connecting'">●</span>
+
+      <!-- Settings link -->
+      <a href="/settings" style="flex:1;display:flex;align-items:center;gap:8px;color:var(--text-muted);text-decoration:none;font-size:13px;transition:color 150ms;min-width:0;"
+         onmouseenter="this.style.color='var(--text-primary)'" onmouseleave="this.style.color='var(--text-muted)'">
+        <span style="flex-shrink:0;">⚙️</span>
+        <span class="sidebar-expand-only" style="font-family:'Syne',sans-serif;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Settings</span>
+      </a>
+
+      <!-- Disconnect button -->
+      <button @click="logout()" title="Disconnect"
+              style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:14px;padding:4px 5px;border-radius:4px;line-height:1;flex-shrink:0;transition:color 150ms;"
+              onmouseenter="this.style.color='var(--accent-red)'" onmouseleave="this.style.color='var(--text-muted)'">⏻</button>
+    </div>
+
+  </aside>
+
+  <!-- CENTER PANEL: Email List -->
+  <section class="email-list-panel">
+
+    <!-- Panel Header with search -->
+    <div class="panel-header">
+      <input class="search-input"
+             type="search"
+             placeholder="Search emails..."
+             hx-get="/api/emails"
+             hx-trigger="input changed delay:400ms"
+             hx-target="#email-list"
+             hx-swap="innerHTML"
+             hx-include="[name='folder'],[name='category']"
+             name="search">
+      <input type="hidden" name="folder" value="INBOX">
+      <input type="hidden" name="category" value="all">
+      <button class="action-btn btn-ghost" style="padding:6px 10px;font-size:12px;flex-shrink:0;"
+              hx-post="/api/sync/now"
+              hx-swap="none"
+              onclick="showToast('info','⟳ Syncing...')">
+        ⟳
+      </button>
+    </div>
+
+    <!-- Email List -->
+    <div id="email-list"
+         hx-get="/api/emails?folder=INBOX&category=all"
+         hx-trigger="load, categoryChange from:body, refresh"
+         hx-swap="innerHTML"
+         style="flex:1;overflow-y:auto;">
+      <!-- Skeleton loaders while loading -->
+      <div style="padding:12px 16px;" class="htmx-indicator">
+        <div class="skeleton" style="height:80px;margin-bottom:8px;border-radius:4px;"></div>
+        <div class="skeleton" style="height:80px;margin-bottom:8px;border-radius:4px;"></div>
+        <div class="skeleton" style="height:80px;margin-bottom:8px;border-radius:4px;"></div>
+        <div class="skeleton" style="height:80px;margin-bottom:8px;border-radius:4px;"></div>
+        <div class="skeleton" style="height:80px;border-radius:4px;"></div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- RIGHT PANEL: Email Detail -->
+  <section class="email-detail-panel">
+
+    <!-- Demo banner (shown when no account config) -->
+    <div id="demo-banner"
+         hx-get="/api/stats"
+         hx-trigger="load"
+         hx-swap="none"
+         style="display:none;">
+    </div>
+
+    <!-- Empty state -->
+    <div id="email-detail"
+         style="height:100%;display:flex;flex-direction:column;">
+      <div style="flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;color:var(--text-muted);padding:48px;">
+        <div style="font-size:48px;opacity:0.3;">✉</div>
+        <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:600;">Select an email to read</div>
+        <div style="font-size:13px;font-family:'Literata',serif;font-style:italic;text-align:center;max-width:300px;line-height:1.6;">
+          IntelliMail classifies every email using Claude AI — meeting requests, financials, legal notices, travel, and more.
+        </div>
+        <div id="demo-mode-check" hx-get="/api/account/test" hx-trigger="load" hx-swap="none"></div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- TOAST CONTAINER -->
+  <div id="toast-container"></div>
+
+</div>
+
+<!-- Check demo mode and show banner -->
+<script>
+  document.addEventListener('DOMContentLoaded', async () => {
+    try {
+      const r = await fetch('/api/stats');
+      // If we get stats, check if demo mode by testing account
+      const testR = await fetch('/api/account/test');
+      // account/test requires query params; if no config, it will error
+    } catch(e) {}
+
+    // Check if demo mode by fetching config status
+    try {
+      const r = await fetch('/api/sync/status');
+      const data = await r.json();
+      if (data.mode === 'demo') {
+        // Show demo banner
+        const detailPanel = document.querySelector('.email-detail-panel');
+        if (detailPanel) {
+          const banner = document.createElement('div');
+          banner.className = 'demo-banner';
+          banner.innerHTML = `
+            <span>📧 DEMO MODE — Connect your email account to get started</span>
+            <a href="/setup" style="background:var(--accent-amber);color:#000;padding:4px 12px;border-radius:4px;text-decoration:none;font-weight:600;font-size:11px;white-space:nowrap;">Connect Account →</a>
+          `;
+          detailPanel.insertBefore(banner, detailPanel.firstChild);
+        }
+        // Also show in email list panel
+        const listPanel = document.querySelector('.email-list-panel');
+        if (listPanel) {
+          const banner2 = document.createElement('div');
+          banner2.className = 'demo-banner';
+          banner2.style.cssText = 'font-size:11px;padding:6px 12px;';
+          banner2.innerHTML = `<span>DEMO MODE</span><a href="/setup" style="color:var(--accent-amber);text-decoration:underline;">Connect Account</a>`;
+          listPanel.insertBefore(banner2, listPanel.firstChild);
+        }
+      }
+    } catch(e) {}
+  });
+</script>
+
+<script src="/js/app.js"></script>
+
+</body>
+</html>

@@ -1,0 +1,23 @@
+{
+  "name": "intellimail",
+  "version": "1.0.0",
+  "description": "Intelligent Email Intelligence Dashboard",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.27.0",
+    "better-sqlite3": "^12.6.2",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "imapflow": "^1.0.162",
+    "mailparser": "^3.6.5",
+    "node-cron": "^3.0.3",
+    "nodemailer": "^6.9.7"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}

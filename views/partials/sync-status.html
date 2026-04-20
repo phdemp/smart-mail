@@ -1,0 +1,9 @@
+<!-- Sync Status Partial — rendered by GET /api/sync/status with Accept: text/html -->
+<!-- This is a reference; actual rendering is in src/routes/api.js -->
+<div hx-get="/api/sync/status" hx-trigger="every 10s" hx-swap="outerHTML"
+     hx-headers='{"Accept": "text/html"}'
+     style="padding:12px 16px;border-top:1px solid var(--border);font-size:12px;color:var(--text-muted);">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+    <!-- Mode indicator injected by server -->
+  </div>
+</div>

@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IntelliMail — Settings</title>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/css/app.css">
+  <style>
+    body { overflow: auto; padding: 0; }
+    .settings-page {
+      max-width: 700px;
+      margin: 0 auto;
+      padding: 32px 24px;
+    }
+  </style>
+</head>
+<body x-data="settingsApp()">
+
+<div class="settings-page">
+
+  <!-- Header -->
+  <div style="display:flex;align-items:center;gap:16px;margin-bottom:32px;">
+    <a href="/dashboard" style="color:var(--text-muted);text-decoration:none;font-size:20px;line-height:1;" title="Back to Dashboard">←</a>
+    <div>
+      <h1 style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:var(--text-primary);">Settings</h1>
+      <p style="font-size:13px;color:var(--text-muted);margin-top:2px;">Configure IntelliMail</p>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast-container"></div>
+
+  <!-- 1. Account Section -->
+  <div class="settings-section">
+    <h3>👤 Account</h3>
+    <div class="form-field">
+      <label>Display Name</label>
+      <input type="text" x-model="cfg.display_name" placeholder="Your Name">
+    </div>
+    <div class="form-field">
+      <label>Email Address</label>
+      <input type="email" x-model="cfg.email" placeholder="you@example.com">
+    </div>
+    <div class="form-field" style="position:relative;">
+      <label>Password / App Password</label>
+      <input :type="showPassword?'text':'password'" x-model="cfg.password" placeholder="Leave blank to keep existing"
+             style="width:100%;background:var(--bg-raised);border:1px solid var(--border);color:var(--text-primary);padding:9px 40px 9px 12px;border-radius:6px;font-size:13px;outline:none;">
+      <button @click="showPassword=!showPassword" type="button"
+              style="position:absolute;right:10px;bottom:8px;background:none;border:none;color:var(--text-muted);cursor:pointer;">
+        <span x-text="showPassword?'🙈':'👁'"></span>
+      </button>
+    </div>
+  </div>
+
+  <!-- 2. IMAP Settings -->
+  <div class="settings-section">
+    <h3>📥 IMAP Settings</h3>
+    <div style="display:grid;grid-template-columns:1fr 120px;gap:12px;">
+      <div class="form-field">
+        <label>IMAP Host</label>
+        <input type="text" x-model="cfg.imap_host" placeholder="imap.gmail.com">
+      </div>
+      <div class="form-field">
+        <label>Port</label>
+        <input type="number" x-model="cfg.imap_port" placeholder="993">
+      </div>
+    </div>
+    <div class="form-field" style="display:flex;align-items:center;gap:10px;">
+      <label style="margin:0;">TLS/SSL</label>
+      <input type="checkbox" x-model="cfg.imap_tls" style="width:16px;height:16px;cursor:pointer;">
+    </div>
+    <button class="action-btn btn-ghost" style="margin-top:8px;font-size:12px;"
+            @click="testImap()" :disabled="testing.imap">
+      <span x-show="!testing.imap">Test IMAP</span>
+      <span x-show="testing.imap">Testing...</span>
+    </button>
+    <div x-show="testResults.imap" style="margin-top:8px;font-size:12px;font-family:'IBM Plex Mono',monospace;"
+         :style="testResults.imap?.ok ? 'color:var(--accent-green)' : 'color:var(--accent-red)'"
+         x-text="testResults.imap?.ok ? '✅ IMAP Connected' : '❌ ' + testResults.imap?.error"></div>
+  </div>
+
+  <!-- 3. SMTP Settings -->
+  <div class="settings-section">
+    <h3>📤 SMTP Settings</h3>
+    <div style="display:grid;grid-template-columns:1fr 120px;gap:12px;">
+      <div class="form-field">
+        <label>SMTP Host</label>
+        <input type="text" x-model="cfg.smtp_host" placeholder="smtp.gmail.com">
+      </div>
+      <div class="form-field">
+        <label>Port</label>
+        <input type="number" x-model="cfg.smtp_port" placeholder="587">
+      </div>
+    </div>
+    <div class="form-field" style="display:flex;align-items:center;gap:10px;">
+      <label style="margin:0;">TLS/SSL</label>
+      <input type="checkbox" x-model="cfg.smtp_tls" style="width:16px;height:16px;cursor:pointer;">
+    </div>
+    <button class="action-btn btn-ghost" style="margin-top:8px;font-size:12px;"
+            @click="testSmtpConn()" :disabled="testing.smtp">
+      <span x-show="!testing.smtp">Test SMTP</span>
+      <span x-show="testing.smtp">Testing...</span>
+    </button>
+    <div x-show="testResults.smtp" style="margin-top:8px;font-size:12px;font-family:'IBM Plex Mono',monospace;"
+         :style="testResults.smtp?.ok ? 'color:var(--accent-green)' : 'color:var(--accent-red)'"
+         x-text="testResults.smtp?.ok ? '✅ SMTP Ready' : '❌ ' + testResults.smtp?.error"></div>
+  </div>
+
+  <!-- 4. Sync Settings -->
+  <div class="settings-section">
+    <h3>⟳ Sync Settings</h3>
+    <div class="form-field">
+      <label>Polling Interval (fallback)</label>
+      <select x-model="cfg.sync_interval" style="width:100%;background:var(--bg-raised);border:1px solid var(--border);color:var(--text-primary);padding:9px 12px;border-radius:6px;font-size:13px;outline:none;">
+        <option value="30">30 seconds</option>
+        <option value="60">60 seconds</option>
+        <option value="120">2 minutes</option>
+        <option value="300">5 minutes</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- 6. Data Management -->
+  <div class="settings-section">
+    <h3>🗄️ Data Management</h3>
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">Manage your local email cache and configuration.</p>
+
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <button class="action-btn btn-ghost" @click="clearCache()" style="text-align:left;">
+        🧹 Clear Email Cache
+        <span style="font-size:11px;color:var(--text-muted);margin-left:8px;">Deletes emails + classifications, keeps config</span>
+      </button>
+
+      <button class="action-btn btn-decline" @click="confirmReset=true" style="text-align:left;">
+        ⚠️ Reset Everything
+        <span style="font-size:11px;margin-left:8px;">Wipes all data, returns to setup</span>
+      </button>
+    </div>
+
+    <!-- Confirm reset modal -->
+    <template x-if="confirmReset">
+      <div style="margin-top:16px;background:var(--bg-raised);border:1px solid rgba(239,68,68,0.4);border-radius:8px;padding:16px;">
+        <p style="font-size:13px;color:var(--accent-red);margin-bottom:12px;font-weight:600;">⚠️ This will delete ALL data including your config. Are you sure?</p>
+        <div style="display:flex;gap:8px;">
+          <form method="POST" action="/api/account/reset" style="flex:1;">
+            <button type="submit" class="action-btn btn-decline" style="width:100%;">Yes, Reset Everything</button>
+          </form>
+          <button class="action-btn btn-ghost" @click="confirmReset=false" style="flex:1;">Cancel</button>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <!-- Save Button -->
+  <div style="display:flex;gap:10px;margin-top:8px;">
+    <a href="/dashboard" class="action-btn btn-ghost" style="text-decoration:none;">← Dashboard</a>
+    <button class="action-btn btn-primary" style="flex:1;" @click="saveSettings()" :disabled="saving">
+      <span x-show="!saving">💾 Save Settings</span>
+      <span x-show="saving">Saving...</span>
+    </button>
+  </div>
+
+</div>
+
+<script src="/js/app.js"></script>
+<script>
+function settingsApp() {
+  return {
+    cfg: {
+      display_name:'', email:'', password:'',
+      imap_host:'', imap_port:993, imap_tls:true,
+      smtp_host:'', smtp_port:587, smtp_tls:false,
+      sync_interval:60
+    },
+    showPassword: false,
+    saving: false,
+    confirmReset: false,
+    testing: { imap: false, smtp: false },
+    testResults: { imap: null, smtp: null },
+
+    async init() {
+      // Load settings from server (source of truth)
+      try {
+        const res = await fetch('/api/settings');
+        if (res.ok) {
+          const data = await res.json();
+          this.cfg = { ...this.cfg, ...data };
+        }
+      } catch(e) {}
+    },
+
+    async saveSettings() {
+      this.saving = true;
+      try {
+        const res = await fetch('/api/settings/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(this.cfg)
+        });
+        if (res.ok) {
+          showToast('success', '✅ Settings saved');
+        } else {
+          const err = await res.json();
+          showToast('error', '❌ ' + (err.error || 'Save failed'));
+        }
+      } catch(e) {
+        showToast('error', '❌ Network error');
+      } finally {
+        this.saving = false;
+      }
+    },
+
+    async testImap() {
+      this.testing.imap = true;
+      this.testResults.imap = null;
+      try {
+        const params = new URLSearchParams({
+          imap_host: this.cfg.imap_host,
+          imap_port: this.cfg.imap_port,
+          imap_tls: this.cfg.imap_tls ? '1' : '0',
+          smtp_host: this.cfg.smtp_host || 'smtp.gmail.com',
+          smtp_port: this.cfg.smtp_port || 587,
+          smtp_tls: this.cfg.smtp_tls ? '1' : '0',
+          username: this.cfg.email,
+          password: this.cfg.password,
+          email: this.cfg.email,
+        });
+        const res = await fetch('/api/account/test?' + params);
+        const data = await res.json();
+        this.testResults.imap = data.imap;
+      } catch(e) {
+        this.testResults.imap = { ok: false, error: e.message };
+      } finally {
+        this.testing.imap = false;
+      }
+    },
+
+    async testSmtpConn() {
+      this.testing.smtp = true;
+      this.testResults.smtp = null;
+      try {
+        const params = new URLSearchParams({
+          imap_host: this.cfg.imap_host || 'imap.gmail.com',
+          imap_port: this.cfg.imap_port || 993,
+          imap_tls: '1',
+          smtp_host: this.cfg.smtp_host,
+          smtp_port: this.cfg.smtp_port,
+          smtp_tls: this.cfg.smtp_tls ? '1' : '0',
+          username: this.cfg.email,
+          password: this.cfg.password,
+          email: this.cfg.email,
+        });
+        const res = await fetch('/api/account/test?' + params);
+        const data = await res.json();
+        this.testResults.smtp = data.smtp;
+      } catch(e) {
+        this.testResults.smtp = { ok: false, error: e.message };
+      } finally {
+        this.testing.smtp = false;
+      }
+    },
+
+    async clearCache() {
+      if (!confirm('Delete all emails and classifications? Config will be kept.')) return;
+      try {
+        const res = await fetch('/api/account/reset', { method: 'POST' });
+        // Reset redirects to /setup, but we want to stay — intercept
+        showToast('info', 'Cache cleared — reloading...');
+        setTimeout(() => location.reload(), 1500);
+      } catch(e) {
+        showToast('error', '❌ ' + e.message);
+      }
+    }
+  };
+}
+</script>
+
+</body>
+</html>
