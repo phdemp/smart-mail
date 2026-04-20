@@ -1,0 +1,14 @@
+IntelliMail running at http://localhost:3099
+I:\xgen-intel\intellimail\node_modules\imapflow\lib\imap-flow.js:1636
+                        let err = new Error(
+                                  ^
+
+Error: Failed to receive greeting from server in required time
+    at Timeout._onTimeout (I:\xgen-intel\intellimail\node_modules\imapflow\lib\imap-flow.js:1636:35)
+    at listOnTimeout (node:internal/timers:594:17)
+    at process.processTimers (node:internal/timers:529:7) {
+  code: 'GREETING_TIMEOUT',
+  details: { greetingTimeout: 15000 }
+}
+
+Node.js v22.14.0
