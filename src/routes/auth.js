@@ -3,6 +3,7 @@ const router = express.Router();
 const { db } = require('../db');
 const { signToken } = require('../auth');
 const { testImap } = require('../imap');
+const { requireAuth } = require('../middleware/auth');
 
 router.post('/api/auth/signup', async (req, res) => {
   const b = req.body || {};
@@ -47,6 +48,29 @@ router.post('/api/auth/signup', async (req, res) => {
 
   const token = signToken(userId, cfg.email);
   res.json({ token, user: { id: userId, email: cfg.email } });
+});
+
+router.post('/api/auth/login', (req, res) => {
+  const { email, password } = req.body || {};
+  if (!email || !password) return res.status(400).json({ error: 'missing_fields' });
+  const row = db.prepare(`
+    SELECT u.id, u.email, ac.password
+    FROM users u JOIN account_config ac ON ac.user_id = u.id
+    WHERE u.email = ?
+  `).get(email);
+  if (!row || row.password !== password) {
+    return res.status(401).json({ error: 'invalid_credentials' });
+  }
+  const token = signToken(row.id, row.email);
+  res.json({ token, user: { id: row.id, email: row.email } });
+});
+
+router.post('/api/auth/logout', (req, res) => {
+  res.json({ ok: true });
+});
+
+router.get('/api/auth/check', requireAuth, (req, res) => {
+  res.json({ ok: true, user: req.user });
 });
 
 module.exports = router;
