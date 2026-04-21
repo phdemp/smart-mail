@@ -1,6 +1,36 @@
 // ── IntelliMail Frontend ──────────────────────────────────────────────────────
 // Alpine.js components + SSE listener + toast system + utilities
 
+// ─── Auth plumbing ──────────────────────────────────────────────────────────
+function authFetch(url, opts = {}) {
+  const token = localStorage.getItem('intellimail_token');
+  const headers = { ...(opts.headers || {}) };
+  if (token) headers.Authorization = 'Bearer ' + token;
+  const promise = fetch(url, { ...opts, headers });
+  promise.then(r => {
+    if (r.status === 401 && !url.startsWith('/api/auth/')) {
+      localStorage.removeItem('intellimail_token');
+      location.href = '/login';
+    }
+  }).catch(() => {});
+  return promise;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (document.body) {
+    document.body.addEventListener('htmx:configRequest', (evt) => {
+      const token = localStorage.getItem('intellimail_token');
+      if (token) evt.detail.headers['Authorization'] = 'Bearer ' + token;
+    });
+    document.body.addEventListener('htmx:responseError', (evt) => {
+      if (evt.detail.xhr && evt.detail.xhr.status === 401) {
+        localStorage.removeItem('intellimail_token');
+        location.href = '/login';
+      }
+    });
+  }
+});
+
 // ── Alpine: App State ─────────────────────────────────────────────────────────
 
 function appState() {
@@ -20,13 +50,13 @@ function appState() {
       this.applyTheme(this.theme);
 
       // Fetch initial stats
-      fetch('/api/stats')
+      authFetch('/api/stats')
         .then(r => r.json())
         .then(data => { this.stats = data; })
         .catch(() => {});
 
       // Fetch current sync status
-      fetch('/api/sync/status')
+      authFetch('/api/sync/status')
         .then(r => r.json())
         .then(d => { this.syncMode = d.mode; this.lastSync = d.lastSync; })
         .catch(() => {});
@@ -48,7 +78,7 @@ function appState() {
     async logout() {
       try {
         // Step 1: check pending deletes before disconnecting
-        const check = await fetch('/api/account/logout', {
+        const check = await authFetch('/api/account/logout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ confirmed: false })
@@ -67,13 +97,14 @@ function appState() {
         }
 
         // Step 2: disconnect (with optional expunge)
-        await fetch('/api/account/logout', {
+        await authFetch('/api/account/logout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ confirmed: true, expunge })
         });
       } catch(e) {}
-      window.location.href = '/setup';
+      localStorage.removeItem('intellimail_token');
+      window.location.href = '/login';
     },
 
     connectSSE() {
@@ -81,7 +112,7 @@ function appState() {
 
       es.onopen = () => {
         // Refresh sync status on reconnect
-        fetch('/api/sync/status')
+        authFetch('/api/sync/status')
           .then(r => r.json())
           .then(d => { this.syncMode = d.mode; this.lastSync = d.lastSync; })
           .catch(() => {});
@@ -95,7 +126,7 @@ function appState() {
           if (listPanel && window.htmx) {
             htmx.trigger(listPanel, 'categoryChange');
           }
-          fetch('/api/stats').then(r => r.json()).then(data => { this.stats = data; }).catch(() => {});
+          authFetch('/api/stats').then(r => r.json()).then(data => { this.stats = data; }).catch(() => {});
         } catch(err) {}
       });
 
@@ -108,7 +139,7 @@ function appState() {
       });
 
       es.addEventListener('stats_update', (e) => {
-        fetch('/api/stats').then(r => r.json()).then(data => { this.stats = data; }).catch(() => {});
+        authFetch('/api/stats').then(r => r.json()).then(data => { this.stats = data; }).catch(() => {});
       });
 
       es.addEventListener('heartbeat', () => {
@@ -189,7 +220,7 @@ function draftEditor({ emailId, initialBody, initialTone, toAddress, subject }) 
     async saveDraft() {
       this.saveStatus = 'Saving...';
       try {
-        await fetch(`/api/emails/${this.emailId}/draft/save`, {
+        await authFetch(`/api/emails/${this.emailId}/draft/save`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -214,7 +245,7 @@ function draftEditor({ emailId, initialBody, initialTone, toAddress, subject }) 
       this.regenerating = true;
       this.saveStatus = 'Regenerating...';
       try {
-        const res = await fetch(`/api/emails/${this.emailId}/draft/regen`, {
+        const res = await authFetch(`/api/emails/${this.emailId}/draft/regen`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ tone: this.tone })
@@ -249,7 +280,7 @@ function draftEditor({ emailId, initialBody, initialTone, toAddress, subject }) 
       }
       this.sending = true;
       try {
-        const res = await fetch(`/api/emails/${this.emailId}/draft/send`, {
+        const res = await authFetch(`/api/emails/${this.emailId}/draft/send`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -359,6 +390,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Handle HTMX errors
   document.body.addEventListener('htmx:responseError', (evt) => {
+    // 401 is handled by the auth plumbing (redirects to /login); don't show a toast
+    if (evt.detail.xhr && evt.detail.xhr.status === 401) return;
     showToast('error', '❌ Request failed: ' + evt.detail.xhr.status);
   });
 });

@@ -4,6 +4,16 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>IntelliMail — Dashboard</title>
+  <script>
+  (function () {
+    const token = localStorage.getItem('intellimail_token');
+    if (!token) {
+      fetch('/api/users/any').then(r => r.json()).then(d => {
+        location.href = d.any ? '/login' : '/setup';
+      }).catch(() => { location.href = '/login'; });
+    }
+  })();
+  </script>
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
   <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
   <script src="https://cdn.tailwindcss.com"></script>
@@ -149,15 +159,15 @@
 <script>
   document.addEventListener('DOMContentLoaded', async () => {
     try {
-      const r = await fetch('/api/stats');
+      const r = await authFetch('/api/stats');
       // If we get stats, check if demo mode by testing account
-      const testR = await fetch('/api/account/test');
+      const testR = await authFetch('/api/account/test');
       // account/test requires query params; if no config, it will error
     } catch(e) {}
 
     // Check if demo mode by fetching config status
     try {
-      const r = await fetch('/api/sync/status');
+      const r = await authFetch('/api/sync/status');
       const data = await r.json();
       if (data.mode === 'demo') {
         // Show demo banner

@@ -4,6 +4,16 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>IntelliMail — Settings</title>
+  <script>
+  (function () {
+    const token = localStorage.getItem('intellimail_token');
+    if (!token) {
+      fetch('/api/users/any').then(r => r.json()).then(d => {
+        location.href = d.any ? '/login' : '/setup';
+      }).catch(() => { location.href = '/login'; });
+    }
+  })();
+  </script>
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
   <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
   <script src="https://cdn.tailwindcss.com"></script>
@@ -286,7 +296,7 @@ function settingsApp() {
     async init() {
       // Load settings from server (source of truth)
       try {
-        const res = await fetch('/api/settings');
+        const res = await authFetch('/api/settings');
         if (res.ok) {
           const data = await res.json();
           this.cfg = { ...this.cfg, ...data };
@@ -298,7 +308,7 @@ function settingsApp() {
     async saveSettings() {
       this.saving = true;
       try {
-        const res = await fetch('/api/settings/save', {
+        const res = await authFetch('/api/settings/save', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(this.cfg)
@@ -318,7 +328,7 @@ function settingsApp() {
 
     async loadProviders() {
       try {
-        const res = await fetch('/api/settings');
+        const res = await authFetch('/api/settings');
         if (!res.ok) return;
         const cfg = await res.json();
         const order   = (cfg.llm_provider_order    || 'local,groq,gemini').split(',');
@@ -336,7 +346,7 @@ function settingsApp() {
         this.providerList = order.map(n => byName[n]).filter(Boolean);
         for (const p of this.providerList) p.enabled = enabled.has(p.name);
         try {
-          const u = await fetch('/api/providers/usage');
+          const u = await authFetch('/api/providers/usage');
           if (u.ok) this.usage = await u.json();
         } catch {}
       } catch {}
@@ -351,7 +361,7 @@ function settingsApp() {
     },
 
     async saveProviderOrder() {
-      await fetch('/api/settings/save', {
+      await authFetch('/api/settings/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -373,7 +383,7 @@ function settingsApp() {
         payload[p.name + '_rpd'] = p.rpd === '' ? null : p.rpd;
       }
       try {
-        const res = await fetch('/api/settings/save', {
+        const res = await authFetch('/api/settings/save', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -392,7 +402,7 @@ function settingsApp() {
       p.testing = true;
       try {
         await this.saveProviders();
-        const res = await fetch(`/api/providers/${name}/test`, { method: 'POST' });
+        const res = await authFetch(`/api/providers/${name}/test`, { method: 'POST' });
         const data = await res.json();
         showToast(data.ok ? 'success' : 'error',
           data.ok ? `✓ ${name}: ${data.category}` : `❌ ${name}: ${data.error || 'failed'}`);
@@ -418,7 +428,7 @@ function settingsApp() {
           password: this.cfg.password,
           email: this.cfg.email,
         });
-        const res = await fetch('/api/account/test?' + params);
+        const res = await authFetch('/api/account/test?' + params);
         const data = await res.json();
         this.testResults.imap = data.imap;
       } catch(e) {
@@ -443,7 +453,7 @@ function settingsApp() {
           password: this.cfg.password,
           email: this.cfg.email,
         });
-        const res = await fetch('/api/account/test?' + params);
+        const res = await authFetch('/api/account/test?' + params);
         const data = await res.json();
         this.testResults.smtp = data.smtp;
       } catch(e) {
@@ -456,7 +466,7 @@ function settingsApp() {
     async clearCache() {
       if (!confirm('Delete all emails and classifications? Config will be kept.')) return;
       try {
-        const res = await fetch('/api/account/reset', { method: 'POST' });
+        const res = await authFetch('/api/account/reset', { method: 'POST' });
         // Reset redirects to /setup, but we want to stay — intercept
         showToast('info', 'Cache cleared — reloading...');
         setTimeout(() => location.reload(), 1500);
