@@ -14,6 +14,7 @@ function createRouter({ providers, getConfig, logger, usage }) {
   for (const p of providers) breakers.set(p.name, { fails: 0, openedAt: 0 });
   const breakerOpen = (name) => {
     const b = breakers.get(name);
+    if (b._sessionDisabled) return true;
     if (!b.openedAt) return false;
     if (Date.now() - b.openedAt >= BREAKER_OPEN_MS) { b.openedAt = 0; return false; }
     return true;
@@ -59,10 +60,19 @@ function createRouter({ providers, getConfig, logger, usage }) {
         log({ provider: name, mode: opts.mode, outcome: 'success', latency_ms: Date.now() - start, email_id: email.id });
         return { ...parsed, _provider: name };
       } catch (err) {
-        log({ provider: name, mode: opts.mode, outcome: classifyError(err), latency_ms: Date.now() - start, email_id: email.id, err: err.message });
+        const outcome = classifyError(err);
+        log({ provider: name, mode: opts.mode, outcome, latency_ms: Date.now() - start, email_id: email.id, err: err.message });
         const br = breakers.get(name);
-        br.fails += 1;
-        if (br.fails >= BREAKER_FAILS) { br.openedAt = Date.now(); br.fails = 0; }
+        if (outcome === 'http_401') {
+          // Session-disable: bad credentials won't fix themselves at runtime.
+          br.openedAt = Date.now();
+          br._sessionDisabled = true;
+        } else if (outcome === 'http_429') {
+          // Quota/rate-limit — not a health problem; token bucket will keep us honest.
+        } else {
+          br.fails += 1;
+          if (br.fails >= BREAKER_FAILS) { br.openedAt = Date.now(); br.fails = 0; }
+        }
         continue;
       }
     }

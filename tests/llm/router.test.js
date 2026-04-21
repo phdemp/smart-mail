@@ -60,6 +60,41 @@ test('router honors order and enabled flags', async () => {
   assert.equal(out._provider, 'c');
 });
 
+test('router session-disables provider on 401', async () => {
+  let calls = 0;
+  const a = { name: 'a', defaultModel: 'x', limits: { rpm: 1000, rpd: 1000 },
+    call: async () => { calls++; const e = new Error('unauth'); e.status = 401; throw e; } };
+  const b = { name: 'b', defaultModel: 'x', limits: { rpm: 1000, rpd: 1000 },
+    call: async () => ({ category: 'fyi', urgency: 'normal', summary: 's', draft_reply: 'r' }) };
+  const usage = { getCount: () => 0, increment: () => {} };
+  const r = createRouter({
+    providers: [a, b],
+    getConfig: () => ({ order: ['a', 'b'], enabled: ['a', 'b'], keys: {}, models: {} }),
+    usage
+  });
+  await r.classify({ from_address: 'x@y', subject: 's', body_text: '' }, { mode: 'full' });
+  await r.classify({ from_address: 'x@y', subject: 's', body_text: '' }, { mode: 'full' });
+  assert.equal(calls, 1, 'second call should skip provider a after 401');
+});
+
+test('router does not trip breaker on 429', async () => {
+  let calls = 0;
+  const a = { name: 'a', defaultModel: 'x', limits: { rpm: 1000, rpd: 1000 },
+    call: async () => { calls++; const e = new Error('rate'); e.status = 429; throw e; } };
+  const b = { name: 'b', defaultModel: 'x', limits: { rpm: 1000, rpd: 1000 },
+    call: async () => ({ category: 'fyi', urgency: 'normal', summary: 's', draft_reply: 'r' }) };
+  const usage = { getCount: () => 0, increment: () => {} };
+  const r = createRouter({
+    providers: [a, b],
+    getConfig: () => ({ order: ['a', 'b'], enabled: ['a', 'b'], keys: {}, models: {} }),
+    usage
+  });
+  for (let i = 0; i < 5; i++) {
+    await r.classify({ from_address: 'x@y', subject: 's', body_text: '' }, { mode: 'full' });
+  }
+  assert.equal(calls, 5, 'every call should still reach a (breaker not tripped on 429)');
+});
+
 test('router opens breaker after 3 consecutive failures', async () => {
   let calls = 0;
   const a = { name: 'a', defaultModel: 'x', limits: { rpm: 1000, rpd: 1000 },
