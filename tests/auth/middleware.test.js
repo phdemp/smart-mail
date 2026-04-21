@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
-process.env.JWT_SECRET_PATH = path.join(__dirname, '..', '..', 'data-test-jwt', 'jwt.secret');
+process.env.JWT_SECRET_PATH = path.join(__dirname, '..', '..', 'data-test-mw', 'jwt.secret');
 
 const { requireAuth } = require('../../src/middleware/auth');
 const { signToken } = require('../../src/auth');
