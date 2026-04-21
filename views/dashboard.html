@@ -15,6 +15,9 @@
   })();
   </script>
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <!-- app.js loaded in head so its htmx:configRequest listener registers BEFORE any
+       hx-trigger="load" element fires its XHR. Without this the dashboard bounces to /login. -->
+  <script src="/js/app.js"></script>
   <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js"></script>
@@ -194,8 +197,6 @@
     } catch(e) {}
   });
 </script>
-
-<script src="/js/app.js"></script>
 
 </body>
 </html>

@@ -2,6 +2,10 @@
 // Alpine.js components + SSE listener + toast system + utilities
 
 // ─── Auth plumbing ──────────────────────────────────────────────────────────
+// IMPORTANT: these listeners must attach SYNCHRONOUSLY at script-load time,
+// before HTMX processes any hx-trigger="load" elements. This script is loaded
+// in <head> after the htmx CDN, so body-level hx-trigger="load" XHRs are
+// intercepted correctly. Listening on `document` works before `<body>` exists.
 function authFetch(url, opts = {}) {
   const token = localStorage.getItem('intellimail_token');
   const headers = { ...(opts.headers || {}) };
@@ -16,18 +20,14 @@ function authFetch(url, opts = {}) {
   return promise;
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  if (document.body) {
-    document.body.addEventListener('htmx:configRequest', (evt) => {
-      const token = localStorage.getItem('intellimail_token');
-      if (token) evt.detail.headers['Authorization'] = 'Bearer ' + token;
-    });
-    document.body.addEventListener('htmx:responseError', (evt) => {
-      if (evt.detail.xhr && evt.detail.xhr.status === 401) {
-        localStorage.removeItem('intellimail_token');
-        location.href = '/login';
-      }
-    });
+document.addEventListener('htmx:configRequest', (evt) => {
+  const token = localStorage.getItem('intellimail_token');
+  if (token) evt.detail.headers['Authorization'] = 'Bearer ' + token;
+});
+document.addEventListener('htmx:responseError', (evt) => {
+  if (evt.detail && evt.detail.xhr && evt.detail.xhr.status === 401) {
+    localStorage.removeItem('intellimail_token');
+    location.href = '/login';
   }
 });
 
