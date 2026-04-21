@@ -6,6 +6,12 @@ const { sendEmail, testSmtp } = require('../smtp');
 const { testImap, getSyncMode, startSync, stopSync, flagAsDeleted, expungeDeleted } = require('../imap');
 const LOCAL_API = 'http://localhost:8765';
 
+// ─── Public endpoints (no auth required) ────────────────────────────────────
+router.get('/api/users/any', (req, res) => {
+  const n = db.prepare('SELECT COUNT(*) as n FROM users').get().n;
+  res.json({ any: n > 0 });
+});
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function escHtml(str) {
@@ -995,18 +1001,24 @@ router.get('/api/emails/:id/ical', (req, res) => {
 
 router.get('/api/settings', (req, res) => {
   const cfg = getConfig() || {};
-  const mask = (k) => (k && k.length >= 4)
-    ? ('•'.repeat(Math.max(0, k.length - 4)) + k.slice(-4))
-    : '';
+  // Default (fallback) limits come from the provider modules
+  const localProv  = require('../llm/providers/local');
+  const groqProv   = require('../llm/providers/groq');
+  const geminiProv = require('../llm/providers/gemini');
   const out = {
     ...cfg,
-    password: undefined,
-    groq_api_key:   mask(cfg.groq_api_key),
-    gemini_api_key: mask(cfg.gemini_api_key),
+    has_password:   !!cfg.password,
+    groq_api_key:   cfg.groq_api_key   || '',
+    gemini_api_key: cfg.gemini_api_key || '',
     groq_model:             cfg.groq_model   || 'llama-3.3-70b-versatile',
     gemini_model:           cfg.gemini_model || 'gemini-2.5-flash',
     llm_provider_order:     cfg.llm_provider_order    || 'local,groq,gemini',
-    llm_providers_enabled:  cfg.llm_providers_enabled || 'local,groq,gemini'
+    llm_providers_enabled:  cfg.llm_providers_enabled || 'local,groq,gemini',
+    limits_defaults: {
+      local:  { rpm: localProv.limits.rpm,  rpd: Number.isFinite(localProv.limits.rpd)  ? localProv.limits.rpd  : null },
+      groq:   { rpm: groqProv.limits.rpm,   rpd: Number.isFinite(groqProv.limits.rpd)   ? groqProv.limits.rpd   : null },
+      gemini: { rpm: geminiProv.limits.rpm, rpd: Number.isFinite(geminiProv.limits.rpd) ? geminiProv.limits.rpd : null }
+    }
   };
   res.json(out);
 });
@@ -1036,12 +1048,16 @@ router.post('/api/settings/save', async (req, res) => {
     const { saveProviderConfig } = require('../llm/config');
     const body = req.body || {};
     const providerUpdates = {};
-    if (body.groq_api_key   && !/^•+/.test(body.groq_api_key))   providerUpdates.groq_api_key   = body.groq_api_key;
-    if (body.gemini_api_key && !/^•+/.test(body.gemini_api_key)) providerUpdates.gemini_api_key = body.gemini_api_key;
+    if (body.groq_api_key   !== undefined) providerUpdates.groq_api_key   = body.groq_api_key;
+    if (body.gemini_api_key !== undefined) providerUpdates.gemini_api_key = body.gemini_api_key;
     if (body.groq_model)            providerUpdates.groq_model   = body.groq_model;
     if (body.gemini_model)          providerUpdates.gemini_model = body.gemini_model;
     if (body.llm_provider_order)    providerUpdates.order        = body.llm_provider_order;
     if (body.llm_providers_enabled) providerUpdates.enabled      = body.llm_providers_enabled;
+    for (const [p, col] of [['groq','groq'],['gemini','gemini'],['local','local']]) {
+      if (body[col + '_rpm'] !== undefined) providerUpdates[col + '_rpm'] = body[col + '_rpm'];
+      if (body[col + '_rpd'] !== undefined) providerUpdates[col + '_rpd'] = body[col + '_rpd'];
+    }
     if (Object.keys(providerUpdates).length) {
       saveProviderConfig(providerUpdates);
       // Reload the router so new keys/order take effect immediately
