@@ -31,6 +31,39 @@ document.addEventListener('htmx:responseError', (evt) => {
   }
 });
 
+// ── Confirm modal ─────────────────────────────────────────────────────────────
+// A single Alpine component (mounted once per page at the bottom of <body>)
+// exposes window.confirmModal(title, message, opts?) returning Promise<boolean>.
+// opts: { confirmLabel?: string, danger?: boolean }
+function confirmModalComponent() {
+  return {
+    open: false,
+    title: '',
+    message: '',
+    confirmLabel: 'Confirm',
+    danger: false,
+    _resolve: null,
+    init() {
+      window.confirmModal = (title, message, opts = {}) => new Promise(resolve => {
+        this.title = title;
+        this.message = message;
+        this.confirmLabel = opts.confirmLabel || 'Confirm';
+        this.danger = !!opts.danger;
+        this._resolve = resolve;
+        this.open = true;
+      });
+    },
+    cancel() {
+      this.open = false;
+      if (this._resolve) { this._resolve(false); this._resolve = null; }
+    },
+    confirm() {
+      this.open = false;
+      if (this._resolve) { this._resolve(true); this._resolve = null; }
+    }
+  };
+}
+
 // ── Alpine: App State ─────────────────────────────────────────────────────────
 
 function appState() {
@@ -75,11 +108,13 @@ function appState() {
       this.applyTheme(this.theme);
     },
 
-    logout() {
-      if (!confirm('Log out of IntelliMail?')) return;
-      // Just clear the session token and bounce to /login. IMAP sync keeps
-      // running in the background so next login shows a current inbox.
-      // Use "Disconnect mail server" in Settings to actually stop IMAP / expunge.
+    async logout() {
+      const ok = await window.confirmModal(
+        'Log out of IntelliMail?',
+        'You\'ll need to sign in again. Your IMAP sync keeps running in the background so your next login shows a fresh inbox.',
+        { confirmLabel: 'Log out', danger: true }
+      );
+      if (!ok) return;
       localStorage.removeItem('intellimail_token');
       window.location.href = '/login';
     },

@@ -198,5 +198,27 @@
   });
 </script>
 
+<!-- Shared confirmation modal — window.confirmModal(title, message, opts) returns Promise<boolean> -->
+<div x-data="confirmModalComponent()" @keydown.escape.window="open && cancel()">
+  <div x-show="open"
+       x-transition.opacity
+       @click="cancel()"
+       style="position:fixed;inset:0;background:rgba(0,0,0,0.55);backdrop-filter:blur(4px);z-index:10000;display:flex;align-items:center;justify-content:center;"
+       x-cloak>
+    <div @click.stop
+         x-show="open"
+         x-transition
+         style="background:var(--bg-raised);border:1px solid var(--border);border-radius:12px;padding:22px 24px;min-width:360px;max-width:92vw;box-shadow:0 24px 60px rgba(0,0,0,0.55);">
+      <h3 x-text="title" style="margin:0 0 8px;font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:var(--text-primary);letter-spacing:-0.01em;"></h3>
+      <p x-text="message" style="margin:0 0 20px;font-size:13px;color:var(--text-muted);line-height:1.55;"></p>
+      <div style="display:flex;justify-content:flex-end;gap:10px;">
+        <button @click="cancel()" class="action-btn btn-ghost" style="min-width:96px;">Cancel</button>
+        <button @click="confirm()" class="action-btn" :class="danger ? 'btn-decline' : 'btn-primary'" x-text="confirmLabel" style="min-width:112px;"></button>
+      </div>
+    </div>
+  </div>
+</div>
+<style>[x-cloak] { display: none !important; }</style>
+
 </body>
 </html>

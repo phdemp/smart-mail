@@ -332,8 +332,13 @@ function settingsApp() {
       }
     },
 
-    logOut() {
-      if (!confirm('Log out of IntelliMail?')) return;
+    async logOut() {
+      const ok = await window.confirmModal(
+        'Log out of IntelliMail?',
+        'You\'ll need to sign in again. Your IMAP sync keeps running in the background.',
+        { confirmLabel: 'Log out', danger: true }
+      );
+      if (!ok) return;
       localStorage.removeItem('intellimail_token');
       location.href = '/login';
     },
@@ -350,11 +355,18 @@ function settingsApp() {
 
         let expunge = false;
         if (data.pendingDeletes > 0) {
-          expunge = confirm(
-            `You have ${data.pendingDeletes} email${data.pendingDeletes === 1 ? '' : 's'} in Trash.\n\nPermanently delete from server before disconnecting?\n\nOK = delete permanently\nCancel = keep in Trash`
+          expunge = await window.confirmModal(
+            `${data.pendingDeletes} email${data.pendingDeletes === 1 ? '' : 's'} in Trash`,
+            'Permanently delete them on the server before disconnecting? Choose Delete to expunge, or Cancel to keep them in Trash (you can restore later).',
+            { confirmLabel: 'Delete permanently', danger: true }
           );
         }
-        if (!confirm('Disconnect from mail server and stop IMAP sync?')) return;
+        const confirmed = await window.confirmModal(
+          'Disconnect mail server?',
+          'Stops IMAP sync for your account. No new emails will arrive until you reconnect.',
+          { confirmLabel: 'Disconnect', danger: true }
+        );
+        if (!confirmed) return;
 
         // Step 2: stop sync (optionally expunge)
         await authFetch('/api/account/logout', {
@@ -519,6 +531,28 @@ function settingsApp() {
   };
 }
 </script>
+
+<!-- Shared confirmation modal -->
+<div x-data="confirmModalComponent()" @keydown.escape.window="open && cancel()">
+  <div x-show="open"
+       x-transition.opacity
+       @click="cancel()"
+       style="position:fixed;inset:0;background:rgba(0,0,0,0.55);backdrop-filter:blur(4px);z-index:10000;display:flex;align-items:center;justify-content:center;"
+       x-cloak>
+    <div @click.stop
+         x-show="open"
+         x-transition
+         style="background:var(--bg-raised);border:1px solid var(--border);border-radius:12px;padding:22px 24px;min-width:360px;max-width:92vw;box-shadow:0 24px 60px rgba(0,0,0,0.55);">
+      <h3 x-text="title" style="margin:0 0 8px;font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:var(--text-primary);letter-spacing:-0.01em;"></h3>
+      <p x-text="message" style="margin:0 0 20px;font-size:13px;color:var(--text-muted);line-height:1.55;"></p>
+      <div style="display:flex;justify-content:flex-end;gap:10px;">
+        <button @click="cancel()" class="action-btn btn-ghost" style="min-width:96px;">Cancel</button>
+        <button @click="confirm()" class="action-btn" :class="danger ? 'btn-decline' : 'btn-primary'" x-text="confirmLabel" style="min-width:112px;"></button>
+      </div>
+    </div>
+  </div>
+</div>
+<style>[x-cloak] { display: none !important; }</style>
 
 </body>
 </html>
