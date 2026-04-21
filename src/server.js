@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const { db, getConfig, getStats } = require('./db');
-const { startSync, setBroadcast } = require('./imap');
+const { startSyncForUser, setBroadcast } = require('./imap');
 const { classifyAllUnclassified, setBroadcast: setClassifierBroadcast } = require('./classifier');
 
 const app = express();
@@ -88,8 +88,12 @@ app.use('/', apiRouter);
 
 // Startup
 async function init() {
+  // Keep global classifyAllUnclassified for now (Task 12 makes it per-user).
   classifyAllUnclassified();
-  startSync();
+  const users = db.prepare('SELECT id FROM users').all();
+  for (const u of users) {
+    startSyncForUser(u.id);
+  }
 }
 
 app.listen(PORT, () => {

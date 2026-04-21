@@ -188,7 +188,10 @@ async function processQueue() {
   }
 }
 
-function queueClassification(emailId) {
+function queueClassification(...args) {
+  // Accept both queueClassification(emailId) and queueClassification(userId, emailId).
+  // Task 12 will use the userId. For now we only queue the emailId.
+  const emailId = args[args.length - 1];
   if (!classificationQueue.includes(emailId)) {
     classificationQueue.push(emailId);
   }

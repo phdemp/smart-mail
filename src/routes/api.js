@@ -3,7 +3,7 @@ const router = express.Router();
 const { db, getConfig, saveConfig, getStats } = require('../db');
 const { queueClassification, classifyEmail, generateDraft } = require('../classifier');
 const { sendEmail, testSmtp } = require('../smtp');
-const { testImap, getSyncMode, startSync, stopSync, flagAsDeleted, expungeDeleted } = require('../imap');
+const { testImap, getSyncMode, startSyncForUser, stopSyncForUser, flagAsDeleted, expungeDeleted } = require('../imap');
 const LOCAL_API = 'http://localhost:8765';
 
 // ─── Public endpoints (no auth required) ────────────────────────────────────
@@ -106,7 +106,7 @@ router.post('/api/account/save', async (req, res) => {
     db.prepare('DELETE FROM emails WHERE user_id = ?').run(req.user.id);
     db.prepare('DELETE FROM classifications WHERE user_id = ?').run(req.user.id);
     db.prepare('DELETE FROM drafts WHERE user_id = ?').run(req.user.id);
-    startSync();
+    startSyncForUser(req.user.id);
     res.redirect('/dashboard');
   } catch (e) {
     res.redirect('/setup?error=' + encodeURIComponent(e.message));
@@ -209,12 +209,12 @@ router.post('/api/account/logout', async (req, res) => {
       return res.json({ ok: false, pendingDeletes });
     }
     if (req.body.expunge && pendingDeletes > 0) {
-      await expungeDeleted();
+      await expungeDeleted(req.user.id);
       db.prepare('DELETE FROM emails WHERE is_deleted = 1 AND user_id = ?').run(req.user.id);
       db.prepare("DELETE FROM classifications WHERE email_id NOT IN (SELECT id FROM emails) AND user_id = ?").run(req.user.id);
       db.prepare("DELETE FROM drafts WHERE email_id NOT IN (SELECT id FROM emails) AND user_id = ?").run(req.user.id);
     }
-    await stopSync();
+    await stopSyncForUser(req.user.id);
     res.json({ ok: true });
   } catch(e) {
     res.status(500).json({ error: e.message });
@@ -244,12 +244,12 @@ router.get('/api/stats', (req, res) => {
 // ─── Sync ────────────────────────────────────────────────────────────────────
 
 router.post('/api/sync/now', async (req, res) => {
-  startSync();
+  startSyncForUser(req.user.id);
   res.json({ ok: true, message: 'Sync triggered' });
 });
 
 router.get('/api/sync/status', (req, res) => {
-  const mode = getSyncMode();
+  const mode = getSyncMode(req.user.id);
   const lastLog = db.prepare(
     "SELECT * FROM sync_log WHERE user_id = ? ORDER BY synced_at DESC LIMIT 1"
   ).get(req.user.id);
@@ -875,14 +875,14 @@ router.post('/api/emails/:id/delete', async (req, res) => {
   const email = db.prepare('SELECT uid, folder FROM emails WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
   if (!email) return res.status(404).json({ error: 'not_found' });
   db.prepare('UPDATE emails SET is_deleted = 1, is_read = 1 WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id);
-  flagAsDeleted(email.uid, email.folder || 'INBOX').catch(() => {});
+  flagAsDeleted(req.user.id, email.uid, email.folder || 'INBOX').catch(() => {});
   res.json({ ok: true });
 });
 
 router.post('/api/emails/:id/permanently-delete', async (req, res) => {
   const email = db.prepare('SELECT uid, folder FROM emails WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
   if (!email) return res.status(404).json({ error: 'not_found' });
-  await expungeDeleted();
+  await expungeDeleted(req.user.id);
   db.prepare('DELETE FROM emails WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id);
   db.prepare(
     "DELETE FROM classifications WHERE email_id NOT IN (SELECT id FROM emails) AND user_id = ?"
