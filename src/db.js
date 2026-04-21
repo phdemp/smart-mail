@@ -85,6 +85,32 @@ CREATE TABLE IF NOT EXISTS sync_log (
 // Migration: add is_deleted for trash support
 try { db.exec('ALTER TABLE emails ADD COLUMN is_deleted INTEGER DEFAULT 0'); } catch(e) {}
 
+// ─── LLM provider config + usage ─────────────────────────────────────────
+const PROVIDER_COLS = [
+  ['groq_api_key',          'TEXT'],
+  ['gemini_api_key',        'TEXT'],
+  ['groq_model',            "TEXT DEFAULT 'llama-3.3-70b-versatile'"],
+  ['gemini_model',          "TEXT DEFAULT 'gemini-2.5-flash'"],
+  ['llm_provider_order',    "TEXT DEFAULT 'local,groq,gemini'"],
+  ['llm_providers_enabled', "TEXT DEFAULT 'local,groq,gemini'"]
+];
+for (const [col, type] of PROVIDER_COLS) {
+  try { db.exec(`ALTER TABLE account_config ADD COLUMN ${col} ${type}`); } catch(e) {}
+}
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS provider_usage (
+  provider TEXT NOT NULL,
+  day DATE NOT NULL,
+  request_count INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (provider, day)
+);
+CREATE INDEX IF NOT EXISTS idx_provider_usage_day ON provider_usage(day);
+`);
+
+// Prune provider_usage rows older than 7 days on boot
+try { db.prepare("DELETE FROM provider_usage WHERE day < date('now', '-7 days')").run(); } catch(e) {}
+
 function getConfig() {
   return db.prepare('SELECT * FROM account_config WHERE id = 1').get();
 }
