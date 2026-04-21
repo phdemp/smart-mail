@@ -164,8 +164,12 @@ if (!puHasUserId) {
   `);
 }
 
-function getConfig() {
-  return db.prepare('SELECT * FROM account_config WHERE id = 1').get();
+function getConfig(userId) {
+  if (userId != null) {
+    return db.prepare('SELECT * FROM account_config WHERE user_id = ?').get(userId);
+  }
+  // Legacy callers (e.g. imap startup before user context) — return first row
+  return db.prepare('SELECT * FROM account_config ORDER BY id LIMIT 1').get();
 }
 
 function saveConfig(cfg) {
@@ -188,28 +192,32 @@ function saveConfig(cfg) {
   }
 }
 
-function getStats() {
+function getStats(userId) {
+  const where = userId != null ? 'AND e.user_id = ?' : '';
+  const params = userId != null ? [userId] : [];
+
   const rows = db.prepare(`
     SELECT c.category, COUNT(*) as count
     FROM emails e
     JOIN classifications c ON c.email_id = e.id
-    WHERE e.is_archived = 0 AND e.is_deleted = 0 AND e.folder = 'INBOX'
+    WHERE e.is_archived = 0 AND e.is_deleted = 0 AND e.folder = 'INBOX' ${where}
     GROUP BY c.category
-  `).all();
+  `).all(...params);
 
   const urgentCount = db.prepare(`
     SELECT COUNT(*) as count FROM emails e
     JOIN classifications c ON c.email_id = e.id
-    WHERE c.urgency = 'urgent' AND e.is_archived = 0 AND e.is_deleted = 0 AND e.is_read = 0
-  `).get();
+    WHERE c.urgency = 'urgent' AND e.is_archived = 0 AND e.is_deleted = 0 AND e.is_read = 0 ${where}
+  `).get(...params);
 
   const totalUnread = db.prepare(`
-    SELECT COUNT(*) as count FROM emails WHERE is_read = 0 AND is_archived = 0 AND is_deleted = 0 AND folder = 'INBOX'
-  `).get();
+    SELECT COUNT(*) as count FROM emails e
+    WHERE is_read = 0 AND is_archived = 0 AND is_deleted = 0 AND folder = 'INBOX' ${where}
+  `).get(...params);
 
-  const trashCount = db.prepare(
-    'SELECT COUNT(*) as count FROM emails WHERE is_deleted = 1'
-  ).get();
+  const trashCount = db.prepare(`
+    SELECT COUNT(*) as count FROM emails e WHERE is_deleted = 1 ${where}
+  `).get(...params);
 
   const stats = {
     urgent: urgentCount.count,

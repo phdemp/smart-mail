@@ -5,8 +5,11 @@ function parseList(s) {
   return String(s).split(',').map(x => x.trim()).filter(Boolean);
 }
 
-function resolveConfig() {
-  const row = db.prepare('SELECT * FROM account_config WHERE id = 1').get() || {};
+function resolveConfig(userId) {
+  const rowRaw = userId != null
+    ? db.prepare('SELECT * FROM account_config WHERE user_id = ?').get(userId)
+    : db.prepare('SELECT * FROM account_config ORDER BY id LIMIT 1').get();
+  const row = rowRaw || {};
   const orderRaw = parseList(row.llm_provider_order);
   const enabledRaw = parseList(row.llm_providers_enabled);
 
@@ -36,10 +39,10 @@ function resolveConfig() {
   return { order, enabled: enabledFiltered, keys, models, limits };
 }
 
-function saveProviderConfig(upd) {
-  const existing = db.prepare('SELECT id FROM account_config WHERE id = 1').get();
+function saveProviderConfig(userId, upd) {
+  const existing = db.prepare('SELECT id FROM account_config WHERE user_id = ?').get(userId);
   if (!existing) {
-    db.prepare('INSERT INTO account_config (id) VALUES (1)').run();
+    db.prepare('INSERT INTO account_config (user_id) VALUES (?)').run(userId);
   }
   const orderStr   = Array.isArray(upd.order)   ? upd.order.join(',')   : upd.order;
   const enabledStr = Array.isArray(upd.enabled) ? upd.enabled.join(',') : upd.enabled;
@@ -57,7 +60,7 @@ function saveProviderConfig(upd) {
     gemini_rpd = COALESCE(?, gemini_rpd),
     local_rpm  = COALESCE(?, local_rpm),
     local_rpd  = COALESCE(?, local_rpd)
-    WHERE id = 1`).run(
+    WHERE user_id = ?`).run(
       upd.groq_api_key ?? null,
       upd.gemini_api_key ?? null,
       upd.groq_model ?? null,
@@ -69,7 +72,8 @@ function saveProviderConfig(upd) {
       intOrNull(upd.gemini_rpm),
       intOrNull(upd.gemini_rpd),
       intOrNull(upd.local_rpm),
-      intOrNull(upd.local_rpd)
+      intOrNull(upd.local_rpd),
+      userId
     );
 }
 
