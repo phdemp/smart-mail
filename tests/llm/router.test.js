@@ -60,6 +60,27 @@ test('router honors order and enabled flags', async () => {
   assert.equal(out._provider, 'c');
 });
 
+test('router opens breaker after 3 consecutive failures', async () => {
+  let calls = 0;
+  const a = { name: 'a', defaultModel: 'x', limits: { rpm: 1000, rpd: 1000 },
+    call: async () => { calls++; throw new Error('boom'); } };
+  const b = { name: 'b', defaultModel: 'x', limits: { rpm: 1000, rpd: 1000 },
+    call: async () => ({ category: 'fyi', urgency: 'normal', summary: 's', draft_reply: 'r' }) };
+  const usage = { getCount: () => 0, increment: () => {} };
+  const r = createRouter({
+    providers: [a, b],
+    getConfig: () => ({ order: ['a', 'b'], enabled: ['a', 'b'], keys: {}, models: {} }),
+    usage
+  });
+  for (let i = 0; i < 3; i++) {
+    await r.classify({ from_address: 'x@y', subject: 's', body_text: '' }, { mode: 'full' });
+  }
+  assert.equal(calls, 3);
+  const out = await r.classify({ from_address: 'x@y', subject: 's', body_text: '' }, { mode: 'full' });
+  assert.equal(calls, 3, 'breaker should have skipped a');
+  assert.equal(out._provider, 'b');
+});
+
 test('router skips provider at daily quota', async () => {
   const a = { name: 'a', defaultModel: 'x', limits: { rpm: 1000, rpd: 5 },
     call: async () => ({ category: 'fyi', urgency: 'normal', summary: 's', draft_reply: 'r' }) };

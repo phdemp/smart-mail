@@ -8,6 +8,17 @@ function createRouter({ providers, getConfig, logger, usage }) {
   const buckets = new Map();
   for (const p of providers) buckets.set(p.name, new TokenBucket({ rpm: p.limits.rpm }));
 
+  const BREAKER_OPEN_MS = 5 * 60 * 1000;
+  const BREAKER_FAILS = 3;
+  const breakers = new Map();
+  for (const p of providers) breakers.set(p.name, { fails: 0, openedAt: 0 });
+  const breakerOpen = (name) => {
+    const b = breakers.get(name);
+    if (!b.openedAt) return false;
+    if (Date.now() - b.openedAt >= BREAKER_OPEN_MS) { b.openedAt = 0; return false; }
+    return true;
+  };
+
   async function classify(email, opts = {}) {
     const cfg = getConfig() || { order: [], enabled: [], keys: {}, models: {} };
     const enabledSet = new Set(cfg.enabled || []);
@@ -19,6 +30,11 @@ function createRouter({ providers, getConfig, logger, usage }) {
         apiKey: (cfg.keys || {})[name],
         model: (cfg.models || {})[name] || provider.defaultModel
       };
+
+      if (breakerOpen(name)) {
+        log({ provider: name, mode: opts.mode, outcome: 'skipped_breaker', email_id: email.id });
+        continue;
+      }
 
       if (Number.isFinite(provider.limits.rpd) && usageApi.getCount(name) >= provider.limits.rpd) {
         log({ provider: name, mode: opts.mode, outcome: 'skipped_quota', email_id: email.id });
@@ -39,10 +55,14 @@ function createRouter({ providers, getConfig, logger, usage }) {
           ? parseProviderResponse(rawResult)
           : { ...DEFAULTS, ...rawResult };
         try { usageApi.increment(name); } catch {}
+        breakers.get(name).fails = 0;
         log({ provider: name, mode: opts.mode, outcome: 'success', latency_ms: Date.now() - start, email_id: email.id });
         return { ...parsed, _provider: name };
       } catch (err) {
         log({ provider: name, mode: opts.mode, outcome: classifyError(err), latency_ms: Date.now() - start, email_id: email.id, err: err.message });
+        const br = breakers.get(name);
+        br.fails += 1;
+        if (br.fails >= BREAKER_FAILS) { br.openedAt = Date.now(); br.fails = 0; }
         continue;
       }
     }
