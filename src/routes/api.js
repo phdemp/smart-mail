@@ -1113,8 +1113,10 @@ router.post('/api/settings/save', async (req, res) => {
     const { saveProviderConfig } = require('../llm/config');
     const body = req.body || {};
     const providerUpdates = {};
-    if (body.groq_api_key   !== undefined) providerUpdates.groq_api_key   = body.groq_api_key;
-    if (body.gemini_api_key !== undefined) providerUpdates.gemini_api_key = body.gemini_api_key;
+    // Only overwrite saved API keys if the client actually sent a non-empty value.
+    // Empty string from a blank password field means "keep existing", not "clear it".
+    if (body.groq_api_key)   providerUpdates.groq_api_key   = body.groq_api_key;
+    if (body.gemini_api_key) providerUpdates.gemini_api_key = body.gemini_api_key;
     if (body.groq_model)            providerUpdates.groq_model   = body.groq_model;
     if (body.gemini_model)          providerUpdates.gemini_model = body.gemini_model;
     if (body.llm_provider_order)    providerUpdates.order        = body.llm_provider_order;
