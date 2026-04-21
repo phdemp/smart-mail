@@ -5,8 +5,16 @@ function createRouter({ providers, getConfig, logger, usage }) {
   const byName = new Map(providers.map(p => [p.name, p]));
   const log = logger || (() => {});
   const usageApi = usage || require('./usage');
+  // Read config once at router build time to get effective limits for buckets.
+  // Saves to the config must call reload() to rebuild with fresh buckets.
+  const initCfg = (getConfig && getConfig()) || {};
+  const initLimits = initCfg.limits || {};
+  const effRpm = (name, def) => {
+    const v = initLimits[name] && initLimits[name].rpm;
+    return (typeof v === 'number' && v > 0) ? v : def;
+  };
   const buckets = new Map();
-  for (const p of providers) buckets.set(p.name, new TokenBucket({ rpm: p.limits.rpm }));
+  for (const p of providers) buckets.set(p.name, new TokenBucket({ rpm: effRpm(p.name, p.limits.rpm) }));
 
   const BREAKER_OPEN_MS = 5 * 60 * 1000;
   const BREAKER_FAILS = 3;
@@ -37,7 +45,11 @@ function createRouter({ providers, getConfig, logger, usage }) {
         continue;
       }
 
-      if (Number.isFinite(provider.limits.rpd) && usageApi.getCount(name) >= provider.limits.rpd) {
+      const cfgLim = cfg.limits && cfg.limits[name];
+      const effectiveRpd = (cfgLim && typeof cfgLim.rpd === 'number' && cfgLim.rpd > 0)
+        ? cfgLim.rpd
+        : provider.limits.rpd;
+      if (Number.isFinite(effectiveRpd) && usageApi.getCount(name) >= effectiveRpd) {
         log({ provider: name, mode: opts.mode, outcome: 'skipped_quota', email_id: email.id });
         continue;
       }

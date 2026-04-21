@@ -173,6 +173,12 @@ function draftEditor({ emailId, initialBody, initialTone, toAddress, subject }) 
           timer = setTimeout(() => this.saveDraft(), 2000);
         };
       }
+      // Auto-generate draft on first open if body is empty
+      if (!this.draftBody || !this.draftBody.trim()) {
+        this.tone = 'professional';
+        // Kick off async; don't block the UI render
+        this.regenerateDraft();
+      }
     },
 
     debouncedSave() {

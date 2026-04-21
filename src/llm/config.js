@@ -20,6 +20,12 @@ function resolveConfig() {
     groq:   row.groq_model   || 'llama-3.3-70b-versatile',
     gemini: row.gemini_model || 'gemini-2.5-flash'
   };
+  // User-override limits; null values let the router fall back to provider defaults
+  const limits = {
+    local:  { rpm: row.local_rpm  ?? null, rpd: row.local_rpd  ?? null },
+    groq:   { rpm: row.groq_rpm   ?? null, rpd: row.groq_rpd   ?? null },
+    gemini: { rpm: row.gemini_rpm ?? null, rpd: row.gemini_rpd ?? null }
+  };
 
   const order   = orderRaw.length   ? orderRaw   : ['local', 'groq', 'gemini'];
   const enabled = enabledRaw.length ? enabledRaw : ['local', 'groq', 'gemini'];
@@ -27,30 +33,43 @@ function resolveConfig() {
   // Auto-disable cloud providers without a key
   const enabledFiltered = enabled.filter(p => p === 'local' || keys[p]);
 
-  return { order, enabled: enabledFiltered, keys, models };
+  return { order, enabled: enabledFiltered, keys, models, limits };
 }
 
-function saveProviderConfig({ groq_api_key, gemini_api_key, groq_model, gemini_model, order, enabled }) {
+function saveProviderConfig(upd) {
   const existing = db.prepare('SELECT id FROM account_config WHERE id = 1').get();
   if (!existing) {
     db.prepare('INSERT INTO account_config (id) VALUES (1)').run();
   }
-  const orderStr   = Array.isArray(order)   ? order.join(',')   : order;
-  const enabledStr = Array.isArray(enabled) ? enabled.join(',') : enabled;
+  const orderStr   = Array.isArray(upd.order)   ? upd.order.join(',')   : upd.order;
+  const enabledStr = Array.isArray(upd.enabled) ? upd.enabled.join(',') : upd.enabled;
+  const intOrNull = v => (v === null || v === undefined || v === '') ? null : parseInt(v, 10);
   db.prepare(`UPDATE account_config SET
     groq_api_key   = COALESCE(?, groq_api_key),
     gemini_api_key = COALESCE(?, gemini_api_key),
     groq_model     = COALESCE(?, groq_model),
     gemini_model   = COALESCE(?, gemini_model),
     llm_provider_order    = COALESCE(?, llm_provider_order),
-    llm_providers_enabled = COALESCE(?, llm_providers_enabled)
+    llm_providers_enabled = COALESCE(?, llm_providers_enabled),
+    groq_rpm   = COALESCE(?, groq_rpm),
+    groq_rpd   = COALESCE(?, groq_rpd),
+    gemini_rpm = COALESCE(?, gemini_rpm),
+    gemini_rpd = COALESCE(?, gemini_rpd),
+    local_rpm  = COALESCE(?, local_rpm),
+    local_rpd  = COALESCE(?, local_rpd)
     WHERE id = 1`).run(
-      groq_api_key ?? null,
-      gemini_api_key ?? null,
-      groq_model ?? null,
-      gemini_model ?? null,
+      upd.groq_api_key ?? null,
+      upd.gemini_api_key ?? null,
+      upd.groq_model ?? null,
+      upd.gemini_model ?? null,
       orderStr ?? null,
-      enabledStr ?? null
+      enabledStr ?? null,
+      intOrNull(upd.groq_rpm),
+      intOrNull(upd.groq_rpd),
+      intOrNull(upd.gemini_rpm),
+      intOrNull(upd.gemini_rpd),
+      intOrNull(upd.local_rpm),
+      intOrNull(upd.local_rpd)
     );
 }
 

@@ -45,8 +45,17 @@
       <input type="email" x-model="cfg.email" placeholder="you@example.com">
     </div>
     <div class="form-field" style="position:relative;">
-      <label>Password / App Password</label>
-      <input :type="showPassword?'text':'password'" x-model="cfg.password" placeholder="Leave blank to keep existing"
+      <label style="display:flex;align-items:center;gap:8px;">
+        Password / App Password
+        <template x-if="cfg.has_password">
+          <span style="font-size:11px;font-weight:400;color:var(--accent-green);">✓ saved</span>
+        </template>
+        <template x-if="cfg.has_password === false">
+          <span style="font-size:11px;font-weight:400;color:var(--text-muted);">no password saved</span>
+        </template>
+      </label>
+      <input :type="showPassword?'text':'password'" x-model="cfg.password"
+             :placeholder="cfg.has_password ? 'Leave blank to keep existing' : 'Your email password or app password'"
              style="width:100%;background:var(--bg-raised);border:1px solid var(--border);color:var(--text-primary);padding:9px 40px 9px 12px;border-radius:6px;font-size:13px;outline:none;">
       <button @click="showPassword=!showPassword" type="button"
               style="position:absolute;right:10px;bottom:8px;background:none;border:none;color:var(--text-muted);cursor:pointer;">
@@ -125,16 +134,42 @@
         <span style="cursor:grab;color:var(--text-muted);">☰</span>
         <input type="checkbox" x-model="p.enabled" @change="saveProviderOrder()">
         <div>
-          <div style="font-weight:600;" x-text="p.label"></div>
+          <div style="font-weight:600;display:flex;align-items:center;gap:8px;">
+            <span x-text="p.label"></span>
+            <template x-if="p.name !== 'local' && p.apiKey">
+              <span style="font-size:11px;font-weight:400;color:var(--accent-green);">✓ saved</span>
+            </template>
+            <template x-if="p.name !== 'local' && !p.apiKey">
+              <span style="font-size:11px;font-weight:400;color:var(--text-muted);">no key saved</span>
+            </template>
+          </div>
           <template x-if="p.name !== 'local'">
             <div style="display:flex;gap:8px;margin-top:6px;">
-              <input type="password" :placeholder="p.name.toUpperCase() + ' API key'"
-                     x-model="p.apiKey"
-                     style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text-primary);padding:6px 10px;border-radius:4px;font-size:12px;">
+              <div style="flex:1;position:relative;">
+                <input :type="p.showKey?'text':'password'"
+                       :placeholder="p.name.toUpperCase() + ' API key'"
+                       x-model="p.apiKey"
+                       style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text-primary);padding:6px 32px 6px 10px;border-radius:4px;font-size:12px;">
+                <button @click="p.showKey = !p.showKey" type="button"
+                        style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-muted);cursor:pointer;padding:2px 4px;font-size:14px;">
+                  <span x-text="p.showKey?'🙈':'👁'"></span>
+                </button>
+              </div>
               <input type="text" placeholder="Model" x-model="p.model"
                      style="width:220px;background:var(--bg);border:1px solid var(--border);color:var(--text-primary);padding:6px 10px;border-radius:4px;font-size:12px;">
             </div>
           </template>
+          <div style="display:flex;gap:8px;margin-top:6px;align-items:center;">
+            <label style="font-size:11px;color:var(--text-muted);min-width:30px;">RPM</label>
+            <input type="number" min="1" x-model.number="p.rpm"
+                   :placeholder="'default ' + (p.defaultRpm ?? '')"
+                   style="width:90px;background:var(--bg);border:1px solid var(--border);color:var(--text-primary);padding:4px 8px;border-radius:4px;font-size:11px;">
+            <label style="font-size:11px;color:var(--text-muted);min-width:30px;margin-left:8px;">RPD</label>
+            <input type="number" min="1" x-model.number="p.rpd"
+                   :placeholder="'default ' + (p.defaultRpd ?? '∞')"
+                   style="width:110px;background:var(--bg);border:1px solid var(--border);color:var(--text-primary);padding:4px 8px;border-radius:4px;font-size:11px;">
+            <span style="font-size:10px;color:var(--text-muted);">(leave blank for default)</span>
+          </div>
         </div>
         <button class="action-btn btn-ghost" @click="testProvider(p.name)" :disabled="p.testing"
                 style="font-size:12px;">
@@ -143,6 +178,13 @@
         </button>
       </div>
     </template>
+
+    <div style="margin-top:14px;padding:10px 12px;background:var(--bg-raised);border:1px solid var(--border);border-radius:6px;font-size:11px;color:var(--text-muted);line-height:1.6;">
+      <div style="font-weight:600;color:var(--text-secondary);margin-bottom:4px;">What RPM &amp; RPD mean</div>
+      <div><b>RPM</b> (Requests Per Minute): caps how many API calls this provider gets in any 60‑second window. Enforced client‑side by a token bucket — if full, the request queues up to 2s (regen) or 30s (classify), then falls through to the next provider.</div>
+      <div style="margin-top:4px;"><b>RPD</b> (Requests Per Day): total allowed calls in 24 h, resets at midnight UTC. Tracked in the local DB. When exhausted, the router skips this provider with <code>skipped_quota</code> and tries the next one.</div>
+      <div style="margin-top:6px;color:var(--text-muted);">Leave blank to use the provider's default ceiling. Free tiers today: Groq ≈ 30/min &amp; ~14 400/day (but watch the 12 k tokens‑per‑minute cap on 70b); Gemini 2.5 Flash ≈ 10/min &amp; ~500/day.</div>
+    </div>
 
     <div style="margin-top:12px;font-size:12px;color:var(--text-muted);">
       <div style="font-weight:600;margin-bottom:4px;">Today's usage</div>
@@ -234,9 +276,9 @@ function settingsApp() {
     testing: { imap: false, smtp: false },
     testResults: { imap: null, smtp: null },
     providerList: [
-      { name: 'local',  label: 'Local (Ollama)',   enabled: true, apiKey: '', model: '', rpd: null, testing: false },
-      { name: 'groq',   label: 'Groq',             enabled: true, apiKey: '', model: 'llama-3.3-70b-versatile', rpd: 14000, testing: false },
-      { name: 'gemini', label: 'Gemini 2.5 Flash', enabled: true, apiKey: '', model: 'gemini-2.5-flash',        rpd: 450,   testing: false }
+      { name: 'local',  label: 'Local (Ollama)',   enabled: true, apiKey: '', showKey: false, model: '', rpm: '', rpd: '', defaultRpm: null, defaultRpd: null, testing: false },
+      { name: 'groq',   label: 'Groq',             enabled: true, apiKey: '', showKey: false, model: 'llama-3.3-70b-versatile', rpm: '', rpd: '', defaultRpm: null, defaultRpd: null, testing: false },
+      { name: 'gemini', label: 'Gemini 2.5 Flash', enabled: true, apiKey: '', showKey: false, model: 'gemini-2.5-flash',        rpm: '', rpd: '', defaultRpm: null, defaultRpd: null, testing: false }
     ],
     usage: {},
     dragIdx: null,
@@ -282,8 +324,15 @@ function settingsApp() {
         const order   = (cfg.llm_provider_order    || 'local,groq,gemini').split(',');
         const enabled = new Set((cfg.llm_providers_enabled || 'local,groq,gemini').split(','));
         const byName = Object.fromEntries(this.providerList.map(p => [p.name, p]));
+        const defaults = cfg.limits_defaults || {};
         if (byName.groq)   { byName.groq.apiKey   = cfg.groq_api_key   || ''; byName.groq.model   = cfg.groq_model   || byName.groq.model; }
         if (byName.gemini) { byName.gemini.apiKey = cfg.gemini_api_key || ''; byName.gemini.model = cfg.gemini_model || byName.gemini.model; }
+        for (const p of this.providerList) {
+          p.rpm = cfg[p.name + '_rpm'] ?? '';
+          p.rpd = cfg[p.name + '_rpd'] ?? '';
+          p.defaultRpm = defaults[p.name]?.rpm ?? null;
+          p.defaultRpd = defaults[p.name]?.rpd ?? null;
+        }
         this.providerList = order.map(n => byName[n]).filter(Boolean);
         for (const p of this.providerList) p.enabled = enabled.has(p.name);
         try {
@@ -320,6 +369,8 @@ function settingsApp() {
       for (const p of this.providerList) {
         if (p.name === 'groq')   { payload.groq_api_key   = p.apiKey; payload.groq_model   = p.model; }
         if (p.name === 'gemini') { payload.gemini_api_key = p.apiKey; payload.gemini_model = p.model; }
+        payload[p.name + '_rpm'] = p.rpm === '' ? null : p.rpm;
+        payload[p.name + '_rpd'] = p.rpd === '' ? null : p.rpd;
       }
       try {
         const res = await fetch('/api/settings/save', {
