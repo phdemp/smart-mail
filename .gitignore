@@ -1,7 +1,11 @@
 node_modules/
 .env
 *.db
+*.db-shm
+*.db-wal
 *.sqlite
 .claude/
 server.log
 data/jwt.secret
+data-test-*/
+intellimail-*-test.db*
