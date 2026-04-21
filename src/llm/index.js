@@ -1,25 +1,33 @@
-const localProvider = require('./providers/local');
+const localProvider  = require('./providers/local');
+const groqProvider   = require('./providers/groq');
+const geminiProvider = require('./providers/gemini');
 const { createRouter } = require('./router');
+const { resolveConfig } = require('./config');
 
 function log(rec) {
   process.stderr.write(JSON.stringify({ ts: new Date().toISOString(), ...rec }) + '\n');
 }
 
-function getConfig() {
-  return {
-    order: ['local'],
-    enabled: ['local'],
-    keys: {},
-    models: {}
-  };
-}
+const PROVIDERS = [localProvider, groqProvider, geminiProvider];
 
-const router = createRouter({
-  providers: [localProvider],
-  getConfig,
+// Current router instance; swapped atomically by reload().
+let current = createRouter({
+  providers: PROVIDERS,
+  getConfig: resolveConfig,
   logger: log
 });
 
-module.exports = { router, _setConfigProvider: (fn) => { module.exports.router = createRouter({
-  providers: [localProvider], getConfig: fn, logger: log
-}); } };
+// Stable proxy so callers that destructure `router` keep working across reloads.
+const router = {
+  classify: (email, opts) => current.classify(email, opts)
+};
+
+function reload() {
+  current = createRouter({
+    providers: PROVIDERS,
+    getConfig: resolveConfig,
+    logger: log
+  });
+}
+
+module.exports = { router, reload };
