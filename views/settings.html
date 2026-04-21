@@ -534,21 +534,17 @@ function settingsApp() {
 
 <!-- Shared confirmation modal -->
 <div x-data="confirmModalComponent()" @keydown.escape.window="open && cancel()">
-  <div x-show="open"
-       x-transition.opacity
-       @click="cancel()"
-       style="position:fixed;inset:0;background:rgba(0,0,0,0.55);backdrop-filter:blur(4px);z-index:10000;display:flex;align-items:center;justify-content:center;"
-       x-cloak>
-    <div @click.stop
-         x-show="open"
-         x-transition
-         style="background:var(--bg-raised);border:1px solid var(--border);border-radius:12px;padding:22px 24px;width:50vw;max-width:600px;min-width:320px;box-shadow:0 24px 60px rgba(0,0,0,0.55);">
-      <h3 x-text="title" style="margin:0 0 8px;font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:var(--text-primary);letter-spacing:-0.01em;"></h3>
-      <p x-text="message" style="margin:0 0 20px;font-size:13px;color:var(--text-muted);line-height:1.55;"></p>
-      <div style="display:flex;justify-content:flex-end;gap:10px;">
-        <button @click="cancel()" class="action-btn btn-ghost" style="min-width:96px;">Cancel</button>
-        <button @click="confirm()" class="action-btn" :class="danger ? 'btn-decline' : 'btn-primary'" x-text="confirmLabel" style="min-width:112px;"></button>
-      </div>
+  <!-- Backdrop -->
+  <div x-show="open" x-transition.opacity @click="cancel()" x-cloak
+       style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.55);backdrop-filter:blur(4px);z-index:10000;"></div>
+  <!-- Dialog -->
+  <div x-show="open" x-transition @click.stop x-cloak
+       style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:50vw;max-width:600px;min-width:320px;background:var(--bg-raised);border:1px solid var(--border);border-radius:12px;padding:24px 28px;box-shadow:0 24px 60px rgba(0,0,0,0.55);z-index:10001;">
+    <h3 x-text="title" style="margin:0 0 10px;font-family:'Syne',sans-serif;font-size:17px;font-weight:700;color:var(--text-primary);letter-spacing:-0.01em;"></h3>
+    <p x-text="message" style="margin:0 0 22px;font-size:13px;color:var(--text-muted);line-height:1.6;"></p>
+    <div style="display:flex;justify-content:flex-end;gap:10px;">
+      <button @click="cancel()" class="action-btn btn-ghost" style="min-width:96px;">Cancel</button>
+      <button @click="confirm()" class="action-btn" :class="danger ? 'btn-decline' : 'btn-primary'" x-text="confirmLabel" style="min-width:112px;"></button>
     </div>
   </div>
 </div>
