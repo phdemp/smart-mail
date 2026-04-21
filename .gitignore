@@ -4,3 +4,4 @@ node_modules/
 *.sqlite
 .claude/
 server.log
+data/jwt.secret
