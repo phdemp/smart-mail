@@ -150,6 +150,36 @@ router.get('/api/account/test', async (req, res) => {
   res.json(results);
 });
 
+router.post('/api/providers/:name/test', async (req, res) => {
+  const { name } = req.params;
+  const allowed = new Set(['local', 'groq', 'gemini']);
+  if (!allowed.has(name)) return res.status(400).json({ ok: false, error: 'Unknown provider' });
+
+  const { resolveConfig } = require('../llm/config');
+  const cfg = resolveConfig();
+  const providers = {
+    local:  require('../llm/providers/local'),
+    groq:   require('../llm/providers/groq'),
+    gemini: require('../llm/providers/gemini')
+  };
+  const provider = providers[name];
+  const sampleEmail = {
+    from_address: 'ping@intellimail.local',
+    from_name:    'IntelliMail Test',
+    subject:      'Test classification — please reply',
+    body_text:    'This is a synthetic test email used to verify the provider responds correctly.'
+  };
+  try {
+    const result = await provider.call(sampleEmail, { mode: 'full' }, {
+      apiKey: cfg.keys[name],
+      model:  cfg.models[name]
+    });
+    res.json({ ok: true, category: result.category, provider: name });
+  } catch (e) {
+    res.status(200).json({ ok: false, error: e.message, status: e.status || null });
+  }
+});
+
 router.post('/api/account/logout', async (req, res) => {
   try {
     const pendingDeletes = db.prepare('SELECT COUNT(*) as c FROM emails WHERE is_deleted = 1').get().c;
