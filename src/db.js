@@ -92,7 +92,13 @@ const PROVIDER_COLS = [
   ['groq_model',            "TEXT DEFAULT 'llama-3.3-70b-versatile'"],
   ['gemini_model',          "TEXT DEFAULT 'gemini-2.5-flash'"],
   ['llm_provider_order',    "TEXT DEFAULT 'local,groq,gemini'"],
-  ['llm_providers_enabled', "TEXT DEFAULT 'local,groq,gemini'"]
+  ['llm_providers_enabled', "TEXT DEFAULT 'local,groq,gemini'"],
+  ['groq_rpm',              'INTEGER'],
+  ['groq_rpd',              'INTEGER'],
+  ['gemini_rpm',            'INTEGER'],
+  ['gemini_rpd',            'INTEGER'],
+  ['local_rpm',             'INTEGER'],
+  ['local_rpd',             'INTEGER']
 ];
 for (const [col, type] of PROVIDER_COLS) {
   try { db.exec(`ALTER TABLE account_config ADD COLUMN ${col} ${type}`); } catch(e) {}
@@ -110,6 +116,53 @@ CREATE INDEX IF NOT EXISTS idx_provider_usage_day ON provider_usage(day);
 
 // Prune provider_usage rows older than 7 days on boot
 try { db.prepare("DELETE FROM provider_usage WHERE day < date('now', '-7 days')").run(); } catch(e) {}
+
+// ─── Multi-user auth ─────────────────────────────────────────────────────
+db.exec(`
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email TEXT UNIQUE NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS meta (
+  key TEXT PRIMARY KEY,
+  value TEXT
+);
+`);
+
+const USER_ID_TABLES = ['account_config', 'emails', 'classifications', 'drafts', 'sync_log'];
+for (const t of USER_ID_TABLES) {
+  try { db.exec(`ALTER TABLE ${t} ADD COLUMN user_id INTEGER REFERENCES users(id)`); } catch(e) {}
+}
+
+db.exec(`
+CREATE INDEX IF NOT EXISTS idx_emails_user          ON emails(user_id);
+CREATE INDEX IF NOT EXISTS idx_classifications_user ON classifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_drafts_user          ON drafts(user_id);
+CREATE INDEX IF NOT EXISTS idx_sync_log_user        ON sync_log(user_id);
+`);
+
+// provider_usage needs its PK rebuilt to include user_id. SQLite can't ALTER PK,
+// so rebuild the table in place. On fresh installs where user_id is already NULL
+// and the composite PK doesn't exist, copy rows into the new shape.
+const puHasUserId = db.prepare('PRAGMA table_info(provider_usage)').all().some(c => c.name === 'user_id');
+if (!puHasUserId) {
+  db.exec(`
+    CREATE TABLE provider_usage_new (
+      user_id INTEGER,
+      provider TEXT NOT NULL,
+      day DATE NOT NULL,
+      request_count INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (user_id, provider, day)
+    );
+    INSERT INTO provider_usage_new (user_id, provider, day, request_count)
+      SELECT NULL, provider, day, request_count FROM provider_usage;
+    DROP TABLE provider_usage;
+    ALTER TABLE provider_usage_new RENAME TO provider_usage;
+    CREATE INDEX IF NOT EXISTS idx_provider_usage_day ON provider_usage(day);
+    CREATE INDEX IF NOT EXISTS idx_provider_usage_user ON provider_usage(user_id, day);
+  `);
+}
 
 function getConfig() {
   return db.prepare('SELECT * FROM account_config WHERE id = 1').get();
