@@ -224,4 +224,7 @@ function getStats() {
   return stats;
 }
 
+const { grandfatherIfNeeded } = require('./db-migration');
+grandfatherIfNeeded(db);
+
 module.exports = { db, getConfig, saveConfig, getStats };
