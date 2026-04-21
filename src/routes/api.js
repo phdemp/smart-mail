@@ -896,28 +896,18 @@ router.post('/api/emails/:id/draft/send', async (req, res) => {
 });
 
 router.post('/api/emails/:id/draft/regen', async (req, res) => {
-  const { tone = 'professional', intent } = req.body;
+  const { tone = 'professional' } = req.body;
   const email = db.prepare('SELECT * FROM emails WHERE id = ?').get(req.params.id);
   const cls = db.prepare('SELECT * FROM classifications WHERE email_id = ?').get(req.params.id);
   if (!email) return res.status(404).json({ error: 'Email not found' });
 
   try {
-    const r = await fetch(`${LOCAL_API}/classify`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        subject:      email.subject      || '',
-        from_address: email.from_address || '',
-        from_name:    email.from_name    || '',
-        preview:      (email.body_text   || '').substring(0, 400),
-        email_id:     String(email.id)
-      })
-    });
-    if (!r.ok) throw new Error(`Local API error: ${r.status}`);
-    const result = await r.json();
-    const draftReply = result.draft_reply || cls?.draft_reply || 'Thank you for your email. I will respond shortly.';
+    const llm = require('../llm');
+    const routed = await llm.router.classify(email, { mode: 'regen', tone });
+    const draftReply = routed?.draft_reply
+      || cls?.draft_reply
+      || 'Thank you for your email. I will respond shortly.';
 
-    // Save the regenerated draft
     const existing = db.prepare('SELECT id FROM drafts WHERE email_id = ?').get(req.params.id);
     if (existing) {
       db.prepare('UPDATE drafts SET body=?, tone=?, last_edited=CURRENT_TIMESTAMP WHERE email_id=?')
@@ -927,7 +917,7 @@ router.post('/api/emails/:id/draft/regen', async (req, res) => {
         .run(req.params.id, draftReply, tone, 'Re: ' + email.subject, email.from_address);
     }
 
-    res.json({ draft_reply: draftReply });
+    res.json({ draft_reply: draftReply, source: routed?._provider || 'fallback' });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

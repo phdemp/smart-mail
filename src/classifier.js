@@ -1,6 +1,5 @@
 const { db, getConfig } = require('./db');
-
-const LOCAL_API = 'http://localhost:8765';
+const llm = require('./llm');
 
 let broadcast = () => {};
 function setBroadcast(fn) { broadcast = fn; }
@@ -85,36 +84,13 @@ function rulesUrgency(category, email) {
   return { urgency: 'normal', urgency_reason: null };
 }
 
-// ─── Tier 2: Local ollama/fastapi classifier ──────────────────────────────────
-
-async function localClassify(email) {
-  const response = await fetch(`${LOCAL_API}/classify`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      subject:      email.subject      || '',
-      from_address: email.from_address || '',
-      from_name:    email.from_name    || '',
-      preview:      (email.body_text   || '').substring(0, 400),
-      email_id:     String(email.id)
-    })
-  });
-  if (!response.ok) throw new Error(`Local API error: ${response.status}`);
-  return response.json();
-}
-
 // ─── Draft generation ─────────────────────────────────────────────────────────
 
 async function generateDraft(emailId) {
   const email = db.prepare('SELECT * FROM emails WHERE id = ?').get(emailId);
   if (!email) return null;
-
-  try {
-    const result = await localClassify(email);
-    return result.draft_reply || 'Thank you for your email. I will review and respond shortly.';
-  } catch {
-    return 'Thank you for your email. I will review and respond shortly.';
-  }
+  const routed = await llm.router.classify(email, { mode: 'regen' });
+  return routed?.draft_reply || 'Thank you for your email. I will review and respond shortly.';
 }
 
 // ─── Fallback ─────────────────────────────────────────────────────────────────
@@ -152,22 +128,21 @@ async function classifyEmail(emailId) {
     return;
   }
 
-  // Tier 2: local LLM
-  try {
-    const result = await localClassify(email);
+  // Tier 2: provider cascade (local → groq → gemini → ...)
+  const routed = await llm.router.classify(email, { mode: 'full' });
+  if (routed) {
     storeClassification(emailId, {
-      category:       result.category,
-      urgency:        result.urgency,
-      urgency_reason: result.urgency_reason,
-      summary:        result.summary,
-      extracted_data: result.extracted_data || {},
-      suggested_tone: result.suggested_tone || 'professional',
-      draft_reply:    result.draft_reply    || null
+      category:       routed.category,
+      urgency:        routed.urgency,
+      urgency_reason: routed.urgency_reason,
+      summary:        routed.summary,
+      extracted_data: routed.extracted_data || {},
+      suggested_tone: routed.suggested_tone || 'professional',
+      draft_reply:    routed.draft_reply    || null
     });
-  } catch (err) {
-    console.error(`[classifier] local API failed for email ${emailId}:`, err.message);
-    storeClassification(emailId, fallbackClassification());
+    return;
   }
+  storeClassification(emailId, fallbackClassification());
 }
 
 function storeClassification(emailId, data) {
