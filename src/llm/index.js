@@ -2,7 +2,7 @@ const localProvider = require('./providers/local');
 const { createRouter } = require('./router');
 
 function log(rec) {
-  process.stdout.write(JSON.stringify({ ts: new Date().toISOString(), ...rec }) + '\n');
+  process.stderr.write(JSON.stringify({ ts: new Date().toISOString(), ...rec }) + '\n');
 }
 
 function getConfig() {
