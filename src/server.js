@@ -3,7 +3,7 @@ const express = require('express');
 const path = require('path');
 const { db, getConfig, getStats } = require('./db');
 const { startSyncForUser, setBroadcast } = require('./imap');
-const { classifyAllUnclassified, setBroadcast: setClassifierBroadcast } = require('./classifier');
+const { classifyAllUnclassifiedForUser, setBroadcast: setClassifierBroadcast } = require('./classifier');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -88,10 +88,9 @@ app.use('/', apiRouter);
 
 // Startup
 async function init() {
-  // Keep global classifyAllUnclassified for now (Task 12 makes it per-user).
-  classifyAllUnclassified();
   const users = db.prepare('SELECT id FROM users').all();
   for (const u of users) {
+    classifyAllUnclassifiedForUser(u.id);
     startSyncForUser(u.id);
   }
 }

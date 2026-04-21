@@ -4,8 +4,14 @@ const llm = require('./llm');
 let broadcast = () => {};
 function setBroadcast(fn) { broadcast = fn; }
 
-let classificationQueue = [];
-let processing = false;
+// Per-user queue state
+const queues = new Map(); // userId -> { queue: [], processing: false }
+
+function q(userId) {
+  let s = queues.get(userId);
+  if (!s) { s = { queue: [], processing: false }; queues.set(userId, s); }
+  return s;
+}
 
 // ─── Tier 1: Rules-based classifier (instant, zero latency) ──────────────────
 
@@ -84,15 +90,6 @@ function rulesUrgency(category, email) {
   return { urgency: 'normal', urgency_reason: null };
 }
 
-// ─── Draft generation ─────────────────────────────────────────────────────────
-
-async function generateDraft(emailId) {
-  const email = db.prepare('SELECT * FROM emails WHERE id = ?').get(emailId);
-  if (!email) return null;
-  const routed = await llm.router.classify(email, { mode: 'regen' });
-  return routed?.draft_reply || 'Thank you for your email. I will review and respond shortly.';
-}
-
 // ─── Fallback ─────────────────────────────────────────────────────────────────
 
 function fallbackClassification() {
@@ -107,11 +104,11 @@ function fallbackClassification() {
 
 // ─── Core classification ──────────────────────────────────────────────────────
 
-async function classifyEmail(emailId) {
-  const email = db.prepare('SELECT * FROM emails WHERE id = ?').get(emailId);
+async function classifyEmail(userId, emailId) {
+  const email = db.prepare('SELECT * FROM emails WHERE id = ? AND user_id = ?').get(emailId, userId);
   if (!email) return;
 
-  const existing = db.prepare('SELECT id FROM classifications WHERE email_id = ?').get(emailId);
+  const existing = db.prepare('SELECT id FROM classifications WHERE email_id = ? AND user_id = ?').get(emailId, userId);
   if (existing) return;
 
   // Tier 1: instant rules
@@ -121,7 +118,7 @@ async function classifyEmail(emailId) {
     const extracted = rulesExtractedData(rulesCategory, email);
     const sub = email.subject || '';
     const summary = `${email.from_name || email.from_address} sent: ${sub.substring(0, 80)}${sub.length > 80 ? '...' : ''}.`;
-    storeClassification(emailId, {
+    storeClassification(userId, emailId, {
       category: rulesCategory, urgency, urgency_reason, summary,
       extracted_data: extracted, suggested_tone: 'professional', draft_reply: null
     });
@@ -129,82 +126,103 @@ async function classifyEmail(emailId) {
   }
 
   // Tier 2: provider cascade (local → groq → gemini → ...)
-  const routed = await llm.router.classify(email, { mode: 'full' });
-  if (routed) {
-    storeClassification(emailId, {
-      category:       routed.category,
-      urgency:        routed.urgency,
-      urgency_reason: routed.urgency_reason,
-      summary:        routed.summary,
-      extracted_data: routed.extracted_data || {},
-      suggested_tone: routed.suggested_tone || 'professional',
-      draft_reply:    routed.draft_reply    || null
-    });
-    return;
+  try {
+    const routed = await llm.router.classify(email, { mode: 'full', userId });
+    if (routed) {
+      storeClassification(userId, emailId, {
+        category:       routed.category,
+        urgency:        routed.urgency,
+        urgency_reason: routed.urgency_reason,
+        summary:        routed.summary,
+        extracted_data: routed.extracted_data || {},
+        suggested_tone: routed.suggested_tone || 'professional',
+        draft_reply:    routed.draft_reply    || null
+      });
+      return;
+    }
+  } catch (err) {
+    console.error(`[classifier] router failed for user=${userId} email=${emailId}:`, err.message);
   }
-  storeClassification(emailId, fallbackClassification());
+  storeClassification(userId, emailId, fallbackClassification());
 }
 
-function storeClassification(emailId, data) {
+function storeClassification(userId, emailId, data) {
   try {
     db.prepare(`
       INSERT OR IGNORE INTO classifications
-      (email_id, category, urgency, urgency_reason, summary, extracted_data, draft_reply, suggested_tone)
-      VALUES (?,?,?,?,?,?,?,?)
+      (user_id, email_id, category, urgency, urgency_reason, summary, extracted_data, draft_reply, suggested_tone)
+      VALUES (?,?,?,?,?,?,?,?,?)
     `).run(
-      emailId, data.category, data.urgency, data.urgency_reason,
+      userId, emailId, data.category, data.urgency, data.urgency_reason,
       data.summary,
       typeof data.extracted_data === 'string' ? data.extracted_data : JSON.stringify(data.extracted_data || {}),
       data.draft_reply || null, data.suggested_tone
     );
 
     broadcast('classification_done', {
+      user_id: userId,
       email_id: emailId,
       category: data.category,
       urgency:  data.urgency
     });
 
-    const email = db.prepare('SELECT * FROM emails WHERE id = ?').get(emailId);
-    const existing = db.prepare('SELECT id FROM drafts WHERE email_id = ?').get(emailId);
+    const email = db.prepare('SELECT * FROM emails WHERE id = ? AND user_id = ?').get(emailId, userId);
+    const existing = db.prepare('SELECT id FROM drafts WHERE email_id = ? AND user_id = ?').get(emailId, userId);
     if (!existing && email && !['fyi', 'other'].includes(data.category)) {
-      db.prepare('INSERT INTO drafts (email_id, body, tone, subject, to_address) VALUES (?,?,?,?,?)')
-        .run(emailId, '', data.suggested_tone || 'professional', 'Re: ' + email.subject, email.from_address);
+      db.prepare('INSERT INTO drafts (user_id, email_id, body, tone, subject, to_address) VALUES (?,?,?,?,?,?)')
+        .run(userId, emailId, '', data.suggested_tone || 'professional', 'Re: ' + email.subject, email.from_address);
     }
   } catch (e) {
-    // silent
+    // silent: classifier failures shouldn't block sync
   }
 }
 
-async function processQueue() {
-  if (processing || classificationQueue.length === 0) return;
-  processing = true;
+async function processQueueFor(userId) {
+  const s = q(userId);
+  if (s.processing || s.queue.length === 0) return;
+  s.processing = true;
   try {
-    while (classificationQueue.length > 0) {
-      const batch = classificationQueue.splice(0, 5);
-      await Promise.all(batch.map(id => classifyEmail(id)));
+    while (s.queue.length > 0) {
+      const batch = s.queue.splice(0, 5);
+      await Promise.all(batch.map(id => classifyEmail(userId, id)));
     }
   } finally {
-    processing = false;
+    s.processing = false;
   }
 }
 
-function queueClassification(...args) {
-  // Accept both queueClassification(emailId) and queueClassification(userId, emailId).
-  // Task 12 will use the userId. For now we only queue the emailId.
-  const emailId = args[args.length - 1];
-  if (!classificationQueue.includes(emailId)) {
-    classificationQueue.push(emailId);
-  }
-  setImmediate(processQueue);
+function queueClassification(userId, emailId) {
+  const s = q(userId);
+  if (!s.queue.includes(emailId)) s.queue.push(emailId);
+  setImmediate(() => processQueueFor(userId));
 }
 
-async function classifyAllUnclassified() {
+async function classifyAllUnclassifiedForUser(userId) {
   const rows = db.prepare(`
     SELECT e.id FROM emails e
-    LEFT JOIN classifications c ON c.email_id = e.id
-    WHERE c.id IS NULL
-  `).all();
-  for (const row of rows) queueClassification(row.id);
+    LEFT JOIN classifications c ON c.email_id = e.id AND c.user_id = e.user_id
+    WHERE c.id IS NULL AND e.user_id = ?
+  `).all(userId);
+  for (const row of rows) queueClassification(userId, row.id);
 }
 
-module.exports = { queueClassification, classifyAllUnclassified, classifyEmail, generateDraft, setBroadcast };
+// ─── Draft generation ─────────────────────────────────────────────────────────
+
+async function generateDraft(userId, emailId) {
+  const email = db.prepare('SELECT * FROM emails WHERE id = ? AND user_id = ?').get(emailId, userId);
+  if (!email) return null;
+  try {
+    const routed = await llm.router.classify(email, { mode: 'regen', userId });
+    return routed?.draft_reply || 'Thank you for your email. I will review and respond shortly.';
+  } catch {
+    return 'Thank you for your email. I will review and respond shortly.';
+  }
+}
+
+module.exports = {
+  queueClassification,
+  classifyAllUnclassifiedForUser,
+  classifyEmail,
+  generateDraft,
+  setBroadcast
+};

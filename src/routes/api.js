@@ -457,7 +457,7 @@ router.get('/api/emails/:id', async (req, res) => {
   const draftTo = draft?.to_address || email.from_address;
 
   if (!draftBody && cls && !['fyi', 'other'].includes(cls.category)) {
-    draftBody = await generateDraft(email.id);
+    draftBody = await generateDraft(req.user.id, email.id);
     if (draftBody && draft) {
       db.prepare('UPDATE drafts SET body=?, last_edited=CURRENT_TIMESTAMP WHERE email_id=? AND user_id=?')
         .run(draftBody, email.id, req.user.id);
@@ -924,7 +924,7 @@ router.post('/api/emails/:id/reclassify', (req, res) => {
 
   db.prepare('DELETE FROM classifications WHERE email_id = ? AND user_id = ?')
     .run(req.params.id, req.user.id);
-  queueClassification(parseInt(req.params.id));
+  queueClassification(req.user.id, parseInt(req.params.id));
 
   // Return placeholder while reclassifying
   res.send(`
