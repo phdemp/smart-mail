@@ -333,6 +333,7 @@ function settingsApp() {
     },
 
     logOut() {
+      if (!confirm('Log out of IntelliMail?')) return;
       localStorage.removeItem('intellimail_token');
       location.href = '/login';
     },

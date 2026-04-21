@@ -76,6 +76,7 @@ function appState() {
     },
 
     logout() {
+      if (!confirm('Log out of IntelliMail?')) return;
       // Just clear the session token and bounce to /login. IMAP sync keeps
       // running in the background so next login shows a current inbox.
       // Use "Disconnect mail server" in Settings to actually stop IMAP / expunge.
