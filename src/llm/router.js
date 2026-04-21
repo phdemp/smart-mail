@@ -1,8 +1,11 @@
 const { parseProviderResponse, DEFAULTS } = require('./providers/base');
+const { TokenBucket } = require('./ratelimiter');
 
 function createRouter({ providers, getConfig, logger }) {
   const byName = new Map(providers.map(p => [p.name, p]));
   const log = logger || (() => {});
+  const buckets = new Map();
+  for (const p of providers) buckets.set(p.name, new TokenBucket({ rpm: p.limits.rpm }));
 
   async function classify(email, opts = {}) {
     const cfg = getConfig() || { order: [], enabled: [], keys: {}, models: {} };
@@ -15,6 +18,14 @@ function createRouter({ providers, getConfig, logger }) {
         apiKey: (cfg.keys || {})[name],
         model: (cfg.models || {})[name] || provider.defaultModel
       };
+
+      const maxWaitMs = opts.mode === 'regen' ? 2000 : 30000;
+      const got = await buckets.get(name).acquire(maxWaitMs);
+      if (!got) {
+        log({ provider: name, mode: opts.mode, outcome: 'skipped_bucket', email_id: email.id });
+        continue;
+      }
+
       const start = Date.now();
       try {
         const rawResult = await provider.call(email, opts, providerCfg);

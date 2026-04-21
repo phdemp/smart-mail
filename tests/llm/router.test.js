@@ -59,3 +59,20 @@ test('router honors order and enabled flags', async () => {
   assert.deepEqual(seen, ['c']);
   assert.equal(out._provider, 'c');
 });
+
+test('router skips provider when bucket is empty (regen mode)', async () => {
+  const a = { name: 'a', defaultModel: 'x', limits: { rpm: 1, rpd: 1000 },
+    call: async () => ({ category: 'fyi', urgency: 'normal', summary: 's', draft_reply: 'ra' }) };
+  const b = { name: 'b', defaultModel: 'x', limits: { rpm: 1000, rpd: 1000 },
+    call: async () => ({ category: 'legal', urgency: 'urgent', summary: 's', draft_reply: 'rb' }) };
+  const r = createRouter({
+    providers: [a, b],
+    getConfig: () => ({ order: ['a', 'b'], enabled: ['a', 'b'], keys: {}, models: {} })
+  });
+  // First call consumes a's only token — returns a
+  const first = await r.classify({ from_address: 'x@y', subject: 's', body_text: '' }, { mode: 'regen' });
+  assert.equal(first._provider, 'a');
+  // Second call: a's bucket is empty; rpm=1 means 60s refill > 2s regen wait, so skip to b
+  const second = await r.classify({ from_address: 'x@y', subject: 's', body_text: '' }, { mode: 'regen' });
+  assert.equal(second._provider, 'b');
+});
