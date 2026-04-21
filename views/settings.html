@@ -262,6 +262,7 @@
   <!-- Save Button -->
   <div style="display:flex;gap:10px;margin-top:8px;">
     <a href="/dashboard" class="action-btn btn-ghost" style="text-decoration:none;">← Dashboard</a>
+    <button class="action-btn btn-ghost" @click="logOut()" style="font-size:12px;">🚪 Log out</button>
     <button class="action-btn btn-primary" style="flex:1;" @click="saveSettings()" :disabled="saving">
       <span x-show="!saving">💾 Save Settings</span>
       <span x-show="saving">Saving...</span>
@@ -324,6 +325,11 @@ function settingsApp() {
       } finally {
         this.saving = false;
       }
+    },
+
+    logOut() {
+      localStorage.removeItem('intellimail_token');
+      location.href = '/login';
     },
 
     async loadProviders() {
