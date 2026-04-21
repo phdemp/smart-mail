@@ -994,31 +994,67 @@ router.get('/api/emails/:id/ical', (req, res) => {
 // ─── Settings ────────────────────────────────────────────────────────────────
 
 router.get('/api/settings', (req, res) => {
-  const cfg = getConfig();
-  if (!cfg) return res.status(404).json({ error: 'No config found' });
-  res.json(cfg);
+  const cfg = getConfig() || {};
+  const mask = (k) => (k && k.length >= 4)
+    ? ('•'.repeat(Math.max(0, k.length - 4)) + k.slice(-4))
+    : '';
+  const out = {
+    ...cfg,
+    password: undefined,
+    groq_api_key:   mask(cfg.groq_api_key),
+    gemini_api_key: mask(cfg.gemini_api_key),
+    groq_model:             cfg.groq_model   || 'llama-3.3-70b-versatile',
+    gemini_model:           cfg.gemini_model || 'gemini-2.5-flash',
+    llm_provider_order:     cfg.llm_provider_order    || 'local,groq,gemini',
+    llm_providers_enabled:  cfg.llm_providers_enabled || 'local,groq,gemini'
+  };
+  res.json(out);
 });
 
 router.post('/api/settings/save', async (req, res) => {
   const existing = getConfig();
-  if (!existing) return res.status(400).json({ error: 'No existing config to update' });
+  if (existing) {
+    const cfg = {
+      ...existing,
+      display_name: req.body.display_name || existing.display_name,
+      email: req.body.email || existing.email,
+      imap_host: req.body.imap_host || existing.imap_host,
+      imap_port: parseInt(req.body.imap_port) || existing.imap_port,
+      imap_tls: req.body.imap_tls === true || req.body.imap_tls === 'on' || req.body.imap_tls === '1' ? 1 : 0,
+      smtp_host: req.body.smtp_host || existing.smtp_host,
+      smtp_port: parseInt(req.body.smtp_port) || existing.smtp_port,
+      smtp_tls: req.body.smtp_tls === true || req.body.smtp_tls === 'on' || req.body.smtp_tls === '1' ? 1 : 0,
+      username: req.body.username || existing.username,
+      password: req.body.password || existing.password,
+      sync_interval: parseInt(req.body.sync_interval) || existing.sync_interval
+    };
+    saveConfig(cfg);
+  }
 
-  const cfg = {
-    ...existing,
-    display_name: req.body.display_name || existing.display_name,
-    email: req.body.email || existing.email,
-    imap_host: req.body.imap_host || existing.imap_host,
-    imap_port: parseInt(req.body.imap_port) || existing.imap_port,
-    imap_tls: req.body.imap_tls === true || req.body.imap_tls === 'on' || req.body.imap_tls === '1' ? 1 : 0,
-    smtp_host: req.body.smtp_host || existing.smtp_host,
-    smtp_port: parseInt(req.body.smtp_port) || existing.smtp_port,
-    smtp_tls: req.body.smtp_tls === true || req.body.smtp_tls === 'on' || req.body.smtp_tls === '1' ? 1 : 0,
-    username: req.body.username || existing.username,
-    password: req.body.password || existing.password,
-    sync_interval: parseInt(req.body.sync_interval) || existing.sync_interval
-  };
-  saveConfig(cfg);
+  // Provider config
+  try {
+    const { saveProviderConfig } = require('../llm/config');
+    const body = req.body || {};
+    const providerUpdates = {};
+    if (body.groq_api_key   && !/^•+/.test(body.groq_api_key))   providerUpdates.groq_api_key   = body.groq_api_key;
+    if (body.gemini_api_key && !/^•+/.test(body.gemini_api_key)) providerUpdates.gemini_api_key = body.gemini_api_key;
+    if (body.groq_model)            providerUpdates.groq_model   = body.groq_model;
+    if (body.gemini_model)          providerUpdates.gemini_model = body.gemini_model;
+    if (body.llm_provider_order)    providerUpdates.order        = body.llm_provider_order;
+    if (body.llm_providers_enabled) providerUpdates.enabled      = body.llm_providers_enabled;
+    if (Object.keys(providerUpdates).length) {
+      saveProviderConfig(providerUpdates);
+      // Reload the router so new keys/order take effect immediately
+      require('../llm').reload();
+    }
+  } catch (e) { /* ignore provider errors to not block account save */ }
+
   res.json({ ok: true, message: 'Settings saved' });
+});
+
+router.get('/api/providers/usage', (req, res) => {
+  const { todaySummary } = require('../llm/usage');
+  res.json(todaySummary());
 });
 
 // Sidebar partial

@@ -109,6 +109,59 @@
          x-text="testResults.smtp?.ok ? '✅ SMTP Ready' : '❌ ' + testResults.smtp?.error"></div>
   </div>
 
+  <!-- 5. AI Providers -->
+  <div class="settings-section">
+    <h3>🧠 AI Providers</h3>
+    <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">
+      Fallback chain for Tier-2 classification and draft regen. Toggle to enable, drag to reorder.
+    </p>
+
+    <template x-for="(p, idx) in providerList" :key="p.name">
+      <div draggable="true"
+           @dragstart="dragIdx=idx"
+           @dragover.prevent
+           @drop="reorderProviders(idx)"
+           style="display:grid;grid-template-columns:24px 24px 1fr auto;gap:10px;align-items:center;margin-bottom:10px;padding:10px;background:var(--bg-raised);border:1px solid var(--border);border-radius:6px;">
+        <span style="cursor:grab;color:var(--text-muted);">☰</span>
+        <input type="checkbox" x-model="p.enabled" @change="saveProviderOrder()">
+        <div>
+          <div style="font-weight:600;" x-text="p.label"></div>
+          <template x-if="p.name !== 'local'">
+            <div style="display:flex;gap:8px;margin-top:6px;">
+              <input type="password" :placeholder="p.name.toUpperCase() + ' API key'"
+                     x-model="p.apiKey"
+                     style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text-primary);padding:6px 10px;border-radius:4px;font-size:12px;">
+              <input type="text" placeholder="Model" x-model="p.model"
+                     style="width:220px;background:var(--bg);border:1px solid var(--border);color:var(--text-primary);padding:6px 10px;border-radius:4px;font-size:12px;">
+            </div>
+          </template>
+        </div>
+        <button class="action-btn btn-ghost" @click="testProvider(p.name)" :disabled="p.testing"
+                style="font-size:12px;">
+          <span x-show="!p.testing">Test</span>
+          <span x-show="p.testing">…</span>
+        </button>
+      </div>
+    </template>
+
+    <div style="margin-top:12px;font-size:12px;color:var(--text-muted);">
+      <div style="font-weight:600;margin-bottom:4px;">Today's usage</div>
+      <template x-for="p in providerList" :key="'usage-'+p.name">
+        <div>
+          <span x-text="p.name"></span>:
+          <span x-text="usage[p.name] || 0"></span>
+          <template x-if="p.rpd !== null && isFinite(p.rpd)">
+            <span> / <span x-text="p.rpd"></span></span>
+          </template>
+        </div>
+      </template>
+    </div>
+
+    <button class="action-btn btn-primary" @click="saveProviders()" style="margin-top:12px;">
+      Save Providers
+    </button>
+  </div>
+
   <!-- 4. Sync Settings -->
   <div class="settings-section">
     <h3>⟳ Sync Settings</h3>
@@ -180,6 +233,13 @@ function settingsApp() {
     confirmReset: false,
     testing: { imap: false, smtp: false },
     testResults: { imap: null, smtp: null },
+    providerList: [
+      { name: 'local',  label: 'Local (Ollama)',   enabled: true, apiKey: '', model: '', rpd: null, testing: false },
+      { name: 'groq',   label: 'Groq',             enabled: true, apiKey: '', model: 'llama-3.3-70b-versatile', rpd: 14000, testing: false },
+      { name: 'gemini', label: 'Gemini 2.5 Flash', enabled: true, apiKey: '', model: 'gemini-2.5-flash',        rpd: 450,   testing: false }
+    ],
+    usage: {},
+    dragIdx: null,
 
     async init() {
       // Load settings from server (source of truth)
@@ -190,6 +250,7 @@ function settingsApp() {
           this.cfg = { ...this.cfg, ...data };
         }
       } catch(e) {}
+      await this.loadProviders();
     },
 
     async saveSettings() {
@@ -210,6 +271,84 @@ function settingsApp() {
         showToast('error', '❌ Network error');
       } finally {
         this.saving = false;
+      }
+    },
+
+    async loadProviders() {
+      try {
+        const res = await fetch('/api/settings');
+        if (!res.ok) return;
+        const cfg = await res.json();
+        const order   = (cfg.llm_provider_order    || 'local,groq,gemini').split(',');
+        const enabled = new Set((cfg.llm_providers_enabled || 'local,groq,gemini').split(','));
+        const byName = Object.fromEntries(this.providerList.map(p => [p.name, p]));
+        if (byName.groq)   { byName.groq.apiKey   = cfg.groq_api_key   || ''; byName.groq.model   = cfg.groq_model   || byName.groq.model; }
+        if (byName.gemini) { byName.gemini.apiKey = cfg.gemini_api_key || ''; byName.gemini.model = cfg.gemini_model || byName.gemini.model; }
+        this.providerList = order.map(n => byName[n]).filter(Boolean);
+        for (const p of this.providerList) p.enabled = enabled.has(p.name);
+        try {
+          const u = await fetch('/api/providers/usage');
+          if (u.ok) this.usage = await u.json();
+        } catch {}
+      } catch {}
+    },
+
+    reorderProviders(toIdx) {
+      if (this.dragIdx === null || this.dragIdx === toIdx) return;
+      const moved = this.providerList.splice(this.dragIdx, 1)[0];
+      this.providerList.splice(toIdx, 0, moved);
+      this.dragIdx = null;
+      this.saveProviderOrder();
+    },
+
+    async saveProviderOrder() {
+      await fetch('/api/settings/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          llm_provider_order:    this.providerList.map(p => p.name).join(','),
+          llm_providers_enabled: this.providerList.filter(p => p.enabled).map(p => p.name).join(',')
+        })
+      });
+    },
+
+    async saveProviders() {
+      const payload = {
+        llm_provider_order:    this.providerList.map(p => p.name).join(','),
+        llm_providers_enabled: this.providerList.filter(p => p.enabled).map(p => p.name).join(',')
+      };
+      for (const p of this.providerList) {
+        if (p.name === 'groq')   { payload.groq_api_key   = p.apiKey; payload.groq_model   = p.model; }
+        if (p.name === 'gemini') { payload.gemini_api_key = p.apiKey; payload.gemini_model = p.model; }
+      }
+      try {
+        const res = await fetch('/api/settings/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        showToast(data.ok ? 'success' : 'error', data.ok ? '✓ Providers saved' : '❌ Save failed');
+        if (data.ok) await this.loadProviders();
+      } catch {
+        showToast('error', '❌ Network error saving providers');
+      }
+    },
+
+    async testProvider(name) {
+      const p = this.providerList.find(x => x.name === name);
+      if (!p) return;
+      p.testing = true;
+      try {
+        await this.saveProviders();
+        const res = await fetch(`/api/providers/${name}/test`, { method: 'POST' });
+        const data = await res.json();
+        showToast(data.ok ? 'success' : 'error',
+          data.ok ? `✓ ${name}: ${data.category}` : `❌ ${name}: ${data.error || 'failed'}`);
+      } catch {
+        showToast('error', `❌ ${name}: network error`);
+      } finally {
+        p.testing = false;
       }
     },
 
