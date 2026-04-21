@@ -1,9 +1,10 @@
 const { parseProviderResponse, DEFAULTS } = require('./providers/base');
 const { TokenBucket } = require('./ratelimiter');
 
-function createRouter({ providers, getConfig, logger }) {
+function createRouter({ providers, getConfig, logger, usage }) {
   const byName = new Map(providers.map(p => [p.name, p]));
   const log = logger || (() => {});
+  const usageApi = usage || require('./usage');
   const buckets = new Map();
   for (const p of providers) buckets.set(p.name, new TokenBucket({ rpm: p.limits.rpm }));
 
@@ -19,6 +20,11 @@ function createRouter({ providers, getConfig, logger }) {
         model: (cfg.models || {})[name] || provider.defaultModel
       };
 
+      if (Number.isFinite(provider.limits.rpd) && usageApi.getCount(name) >= provider.limits.rpd) {
+        log({ provider: name, mode: opts.mode, outcome: 'skipped_quota', email_id: email.id });
+        continue;
+      }
+
       const maxWaitMs = opts.mode === 'regen' ? 2000 : 30000;
       const got = await buckets.get(name).acquire(maxWaitMs);
       if (!got) {
@@ -32,6 +38,7 @@ function createRouter({ providers, getConfig, logger }) {
         const parsed = typeof rawResult === 'string'
           ? parseProviderResponse(rawResult)
           : { ...DEFAULTS, ...rawResult };
+        try { usageApi.increment(name); } catch {}
         log({ provider: name, mode: opts.mode, outcome: 'success', latency_ms: Date.now() - start, email_id: email.id });
         return { ...parsed, _provider: name };
       } catch (err) {
