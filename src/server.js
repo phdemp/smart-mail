@@ -63,6 +63,21 @@ setBroadcast((event, data) => {
 });
 setClassifierBroadcast(broadcast);
 
+// Auth gate: every /api/* route requires a valid JWT except the public endpoints below.
+const { requireAuth } = require('./middleware/auth');
+const PUBLIC_API_PATHS = new Set([
+  '/api/auth/signup', '/api/auth/login', '/api/auth/logout', '/api/auth/check',
+  '/api/users/any',
+  '/api/account/test-imap', '/api/account/test-smtp', '/api/account/test'
+]);
+app.use((req, res, next) => {
+  if (!req.path.startsWith('/api/')) return next();
+  if (PUBLIC_API_PATHS.has(req.path)) return next();
+  // Provider test endpoint stays open so the setup wizard can test creds pre-signup
+  if (req.path.startsWith('/api/providers/') && req.path.endsWith('/test')) return next();
+  return requireAuth(req, res, next);
+});
+
 // Routes
 const pagesRouter = require('./routes/pages');
 const apiRouter = require('./routes/api');
