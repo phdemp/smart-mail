@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IntelliMail — Setup</title>
+  <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/css/app.css">
+  <style>
+    body {
+      overflow: auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background: var(--bg-base);
+      background-image:
+        radial-gradient(ellipse at 50% 30%, rgba(0, 212, 255, 0.06) 0%, transparent 60%),
+        radial-gradient(ellipse at 80% 80%, rgba(167, 139, 250, 0.04) 0%, transparent 40%);
+    }
+    .setup-card {
+      background: rgba(16, 20, 31, 0.95);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 16px;
+      width: 100%;
+      max-width: 560px;
+      margin: 24px;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.5);
+    }
+    .provider-btn {
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      cursor: pointer;
+      text-align: center;
+      transition: all 150ms;
+      color: var(--text-secondary);
+      font-family: 'Syne', sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .provider-btn:hover, .provider-btn.selected {
+      border-color: var(--accent-cyan);
+      color: var(--accent-cyan);
+      background: rgba(0,212,255,0.06);
+    }
+    .step-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--border-bright);
+      transition: background 300ms;
+    }
+    .step-dot.active { background: var(--accent-cyan); }
+    .step-dot.done   { background: var(--accent-green); }
+    .test-result {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      margin-bottom: 8px;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+    .test-result.ok      { background: rgba(16,185,129,0.1);  border: 1px solid rgba(16,185,129,0.3); color: var(--accent-green); }
+    .test-result.fail    { background: rgba(239,68,68,0.1);   border: 1px solid rgba(239,68,68,0.3);  color: var(--accent-red); }
+    .test-result.testing { background: rgba(0,212,255,0.06);  border: 1px solid rgba(0,212,255,0.2);  color: var(--accent-cyan); }
+  </style>
+</head>
+<body>
+
+<div x-data="setupWizard()" class="setup-card">
+
+  <!-- Header -->
+  <div style="padding:32px 32px 24px;border-bottom:1px solid var(--border);text-align:center;">
+    <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:24px;color:var(--accent-cyan);margin-bottom:6px;">✉ IntelliMail</div>
+    <div style="font-size:13px;color:var(--text-muted);font-family:'Literata',serif;font-style:italic;">Intelligent Email Intelligence Dashboard</div>
+  </div>
+
+  <!-- Error from redirect -->
+  <template x-if="urlError">
+    <div style="margin:16px 24px 0;padding:10px 14px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:8px;font-size:13px;color:var(--accent-red);">
+      ⚠️ <span x-text="urlError"></span>
+    </div>
+  </template>
+
+  <!-- Step 1: Choose Provider -->
+  <div x-show="step === 1" style="padding:28px 32px;">
+    <h2 style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;margin-bottom:6px;color:var(--text-primary);">Choose your email provider</h2>
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:20px;font-family:'Literata',serif;">Select your provider to auto-fill server settings</p>
+
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px;">
+      <button class="provider-btn" :class="{selected:provider==='gmail'}" @click="selectProvider('gmail')">
+        <div style="font-size:24px;margin-bottom:4px;">📧</div>
+        Gmail
+      </button>
+      <button class="provider-btn" :class="{selected:provider==='outlook'}" @click="selectProvider('outlook')">
+        <div style="font-size:24px;margin-bottom:4px;">📨</div>
+        Outlook
+      </button>
+      <button class="provider-btn" :class="{selected:provider==='yahoo'}" @click="selectProvider('yahoo')">
+        <div style="font-size:24px;margin-bottom:4px;">📬</div>
+        Yahoo
+      </button>
+      <button class="provider-btn" :class="{selected:provider==='icloud'}" @click="selectProvider('icloud')">
+        <div style="font-size:24px;margin-bottom:4px;">☁️</div>
+        iCloud
+      </button>
+      <button class="provider-btn" :class="{selected:provider==='custom'}" @click="selectProvider('custom')" style="grid-column:span 2;">
+        <div style="font-size:24px;margin-bottom:4px;">🔧</div>
+        Custom IMAP
+      </button>
+    </div>
+
+    <button class="action-btn btn-primary" style="width:100%;" @click="step=2" :disabled="!provider">
+      Continue →
+    </button>
+  </div>
+
+  <!-- Step 2: Credentials -->
+  <div x-show="step === 2" style="padding:28px 32px;">
+    <h2 style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;margin-bottom:6px;color:var(--text-primary);">Enter your credentials</h2>
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:20px;font-family:'Literata',serif;">
+      <template x-if="provider==='gmail'">
+        <span>Gmail requires an <a href="https://myaccount.google.com/apppasswords" target="_blank" style="color:var(--accent-cyan);">App Password</a> if 2FA is enabled</span>
+      </template>
+      <template x-if="provider!=='gmail'">
+        <span>Your credentials are stored locally and never shared</span>
+      </template>
+    </p>
+
+    <div class="form-field">
+      <label>Display Name</label>
+      <input type="text" x-model="form.display_name" placeholder="John Smith">
+    </div>
+    <div class="form-field">
+      <label>Email Address</label>
+      <input type="email" x-model="form.email" placeholder="you@gmail.com" @input="form.username=form.email">
+    </div>
+    <div class="form-field" style="position:relative;">
+      <label>Password / App Password</label>
+      <input :type="showPassword?'text':'password'" x-model="form.password" placeholder="••••••••••••••••"
+             style="width:100%;background:var(--bg-raised);border:1px solid var(--border);color:var(--text-primary);padding:9px 40px 9px 12px;border-radius:6px;font-size:13px;outline:none;">
+      <button @click="showPassword=!showPassword" type="button"
+              style="position:absolute;right:10px;bottom:8px;background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:14px;">
+        <span x-text="showPassword?'🙈':'👁'"></span>
+      </button>
+    </div>
+
+    <template x-if="provider==='custom'">
+      <div>
+        <div style="display:grid;grid-template-columns:1fr auto;gap:8px;">
+          <div class="form-field">
+            <label>IMAP Host</label>
+            <input type="text" x-model="form.imap_host" placeholder="imap.example.com">
+          </div>
+          <div class="form-field" style="width:80px;">
+            <label>Port</label>
+            <input type="number" x-model="form.imap_port" placeholder="993">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr auto;gap:8px;">
+          <div class="form-field">
+            <label>SMTP Host</label>
+            <input type="text" x-model="form.smtp_host" placeholder="smtp.example.com">
+          </div>
+          <div class="form-field" style="width:80px;">
+            <label>Port</label>
+            <input type="number" x-model="form.smtp_port" placeholder="587">
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <div style="display:flex;gap:10px;margin-top:20px;">
+      <button class="action-btn btn-ghost" @click="step=1" style="flex:1;">← Back</button>
+      <button class="action-btn btn-primary" @click="step=3;testConnection()" style="flex:2;">Test Connection →</button>
+    </div>
+  </div>
+
+  <!-- Step 3: Test Connection -->
+  <div x-show="step === 3" style="padding:28px 32px;">
+    <h2 style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;margin-bottom:6px;color:var(--text-primary);">Testing connection...</h2>
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:20px;font-family:'Literata',serif;">Verifying IMAP and SMTP connectivity</p>
+
+    <div class="test-result" :class="results.imap===null?'testing':results.imap.ok?'ok':'fail'">
+      <span style="flex-shrink:0;" x-text="results.imap===null?'⟳':results.imap.ok?'✅':'❌'"></span>
+      <span style="word-break:break-word;">
+        <strong>IMAP</strong> —
+        <span x-text="results.imap===null?'Testing...':results.imap.ok?'Connected':'Failed'"></span>
+        <span x-show="results.imap && !results.imap.ok" x-text="results.imap?.error ? ': '+results.imap.error : ''"
+              style="display:block;margin-top:4px;font-size:11px;opacity:0.85;white-space:pre-wrap;"></span>
+      </span>
+    </div>
+    <div class="test-result" :class="results.smtp===null?'testing':results.smtp.ok?'ok':'fail'">
+      <span style="flex-shrink:0;" x-text="results.smtp===null?'⟳':results.smtp.ok?'✅':'❌'"></span>
+      <span style="word-break:break-word;">
+        <strong>SMTP</strong> —
+        <span x-text="results.smtp===null?'Testing...':results.smtp.ok?'Ready':'Failed'"></span>
+        <span x-show="results.smtp && !results.smtp.ok" x-text="results.smtp?.error ? ': '+results.smtp.error : ''"
+              style="display:block;margin-top:4px;font-size:11px;opacity:0.85;white-space:pre-wrap;"></span>
+      </span>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:20px;">
+      <button class="action-btn btn-ghost" @click="step=2" style="flex:1;">← Back</button>
+      <button class="action-btn btn-ghost" @click="testConnection()" style="flex:1;">Retry</button>
+      <button class="action-btn btn-primary" @click="step=4"
+              :disabled="!(results.imap && results.imap.ok && results.smtp && results.smtp.ok)"
+              style="flex:2;">
+        Continue →
+      </button>
+    </div>
+  </div>
+
+  <!-- Step 4: Launch -->
+  <div x-show="step === 4" style="padding:28px 32px;">
+    <h2 style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;margin-bottom:6px;color:var(--text-primary);">Ready to launch! 🚀</h2>
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:24px;font-family:'Literata',serif;">
+      IntelliMail will start syncing your inbox and classifying emails with Claude AI.
+    </p>
+
+    <div style="background:var(--bg-raised);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin-bottom:20px;font-size:12px;color:var(--text-muted);font-family:'IBM Plex Mono',monospace;">
+      <div style="margin-bottom:4px;">Account: <span style="color:var(--text-primary);" x-text="form.email"></span></div>
+      <div style="margin-bottom:4px;">IMAP: <span style="color:var(--text-primary);" x-text="form.imap_host+':'+form.imap_port"></span></div>
+      <div>SMTP: <span style="color:var(--text-primary);" x-text="form.smtp_host+':'+form.smtp_port"></span></div>
+    </div>
+
+    <form method="POST" action="/api/account/save" @submit="launching=true">
+      <input type="hidden" name="display_name" :value="form.display_name">
+      <input type="hidden" name="email" :value="form.email">
+      <input type="hidden" name="username" :value="form.username||form.email">
+      <input type="hidden" name="password" :value="form.password">
+      <input type="hidden" name="imap_host" :value="form.imap_host">
+      <input type="hidden" name="imap_port" :value="form.imap_port">
+      <input type="hidden" name="imap_tls" :value="form.imap_tls?'1':'0'">
+      <input type="hidden" name="smtp_host" :value="form.smtp_host">
+      <input type="hidden" name="smtp_port" :value="form.smtp_port">
+      <input type="hidden" name="smtp_tls" :value="form.smtp_tls?'1':'0'">
+      <input type="hidden" name="sync_interval" value="60">
+
+      <button type="submit" class="action-btn btn-primary" style="width:100%;padding:14px;font-size:15px;" :disabled="launching">
+        <span x-show="!launching">🚀 Launch IntelliMail</span>
+        <span x-show="launching">Launching...</span>
+      </button>
+    </form>
+
+    <button class="action-btn btn-ghost" @click="step=3" style="width:100%;margin-top:10px;">← Back</button>
+  </div>
+
+  <!-- Progress dots -->
+  <div style="padding:20px 32px;border-top:1px solid var(--border);display:flex;justify-content:center;gap:8px;">
+    <div class="step-dot" :class="step>=1?'active':''" :class="step>1?'done':step===1?'active':''"></div>
+    <div class="step-dot" :class="step>2?'done':step===2?'active':''"></div>
+    <div class="step-dot" :class="step>3?'done':step===3?'active':''"></div>
+    <div class="step-dot" :class="step===4?'active':''"></div>
+  </div>
+
+</div>
+
+<script>
+function setupWizard() {
+  const providers = {
+    gmail:   { imap_host:'imap.gmail.com',             imap_port:993, imap_tls:true,  smtp_host:'smtp.gmail.com',               smtp_port:587, smtp_tls:false },
+    outlook: { imap_host:'outlook.office365.com',      imap_port:993, imap_tls:true,  smtp_host:'smtp.office365.com',           smtp_port:587, smtp_tls:false },
+    yahoo:   { imap_host:'imap.mail.yahoo.com',        imap_port:993, imap_tls:true,  smtp_host:'smtp.mail.yahoo.com',          smtp_port:587, smtp_tls:false },
+    icloud:  { imap_host:'imap.mail.me.com',           imap_port:993, imap_tls:true,  smtp_host:'smtp.mail.me.com',             smtp_port:587, smtp_tls:false },
+    custom:  { imap_host:'',                           imap_port:993, imap_tls:true,  smtp_host:'',                             smtp_port:587, smtp_tls:false }
+  };
+
+  return {
+    step: 1,
+    provider: '',
+    showPassword: false,
+    launching: false,
+    urlError: new URLSearchParams(window.location.search).get('error'),
+    form: {
+      display_name:'', email:'', username:'', password:'',
+      imap_host:'', imap_port:993, imap_tls:true,
+      smtp_host:'', smtp_port:587, smtp_tls:false,
+    },
+    results: { imap: null, smtp: null },
+
+    selectProvider(p) {
+      this.provider = p;
+      const cfg = providers[p];
+      Object.assign(this.form, cfg);
+    },
+
+    async testConnection() {
+      this.results = { imap: null, smtp: null };
+      const params = new URLSearchParams({
+        imap_host: this.form.imap_host,
+        imap_port: this.form.imap_port,
+        imap_tls: this.form.imap_tls ? '1' : '0',
+        smtp_host: this.form.smtp_host,
+        smtp_port: this.form.smtp_port,
+        smtp_tls: this.form.smtp_tls ? '1' : '0',
+        username: this.form.username || this.form.email,
+        password: this.form.password,
+        email: this.form.email
+      });
+
+      // Test IMAP first — show result immediately
+      try {
+        const r = await fetch('/api/account/test-imap?' + params);
+        this.results.imap = await r.json();
+      } catch(e) {
+        this.results.imap = { ok: false, error: 'Network error: ' + e.message };
+      }
+
+      // Then test SMTP
+      try {
+        const r = await fetch('/api/account/test-smtp?' + params);
+        this.results.smtp = await r.json();
+      } catch(e) {
+        this.results.smtp = { ok: false, error: 'Network error: ' + e.message };
+      }
+    }
+  };
+}
+</script>
+
+</body>
+</html>

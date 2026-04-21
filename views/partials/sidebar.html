@@ -1,0 +1,19 @@
+<!-- Sidebar Partial — rendered by GET /api/sidebar -->
+<!-- This is a reference; actual rendering is inline in src/routes/api.js -->
+<!--
+Smart Folders with live badge counts:
+  🔴 Urgent Attention    (count: stats.urgent)
+  📅 Meeting Requests    (count: stats.meeting_request)
+  💳 Financial           (count: stats.financial)
+  ⚖️ Legal               (count: stats.legal)
+  ✈️ Travel & Hotels     (count: stats.travel)
+  🚀 Pitch Decks         (count: stats.pitch_deck)
+  🏆 Rewards & Awards    (count: stats.rewards_awards)
+  ℹ️ For Your Info       (count: stats.fyi)
+  📂 All Other           (count: stats.other)
+  ─────────────────────
+  📥 All Inbox           (count: stats.total_unread)
+  📤 Sent
+
+Each folder: hx-get="/api/emails?category={cat}" hx-target="#email-list" hx-swap="innerHTML"
+-->

@@ -1,0 +1,353 @@
+// ── IntelliMail Frontend ──────────────────────────────────────────────────────
+// Alpine.js components + SSE listener + toast system + utilities
+
+// ── Alpine: App State ─────────────────────────────────────────────────────────
+
+function appState() {
+  return {
+    sidebarCollapsed: false,
+    stats: {
+      urgent: 0, total_unread: 0,
+      meeting_request: 0, financial: 0, legal: 0, travel: 0,
+      pitch_deck: 0, fyi: 0, rewards_awards: 0, other: 0
+    },
+    syncMode: 'connecting',
+    lastSync: null,
+    theme: localStorage.getItem('im_theme') || 'dark',
+
+    init() {
+      // Apply saved theme
+      this.applyTheme(this.theme);
+
+      // Fetch initial stats
+      fetch('/api/stats')
+        .then(r => r.json())
+        .then(data => { this.stats = data; })
+        .catch(() => {});
+
+      // Fetch current sync status
+      fetch('/api/sync/status')
+        .then(r => r.json())
+        .then(d => { this.syncMode = d.mode; this.lastSync = d.lastSync; })
+        .catch(() => {});
+
+      // Set up SSE
+      this.connectSSE();
+    },
+
+    applyTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+    },
+
+    toggleTheme() {
+      this.theme = this.theme === 'dark' ? 'light' : 'dark';
+      localStorage.setItem('im_theme', this.theme);
+      this.applyTheme(this.theme);
+    },
+
+    async logout() {
+      try {
+        // Step 1: check pending deletes before disconnecting
+        const check = await fetch('/api/account/logout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ confirmed: false })
+        });
+        const data = await check.json();
+
+        let expunge = false;
+        if (data.pendingDeletes > 0) {
+          const choice = confirm(
+            `You have ${data.pendingDeletes} email${data.pendingDeletes === 1 ? '' : 's'} in Trash.\n\nPermanently delete from server before disconnecting?\n\nOK = Delete permanently\nCancel = Keep in Trash (can restore later)`
+          );
+          expunge = choice;
+          if (!confirm('Disconnect from mail server?')) return;
+        } else {
+          if (!confirm('Disconnect from mail server?')) return;
+        }
+
+        // Step 2: disconnect (with optional expunge)
+        await fetch('/api/account/logout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ confirmed: true, expunge })
+        });
+      } catch(e) {}
+      window.location.href = '/setup';
+    },
+
+    connectSSE() {
+      const es = new EventSource('/api/sse');
+
+      es.onopen = () => {
+        // Refresh sync status on reconnect
+        fetch('/api/sync/status')
+          .then(r => r.json())
+          .then(d => { this.syncMode = d.mode; this.lastSync = d.lastSync; })
+          .catch(() => {});
+      };
+
+      es.addEventListener('new_email', (e) => {
+        try {
+          const d = JSON.parse(e.data);
+          showToast('info', `📬 ${d.from_name}: ${(d.subject || '').substring(0, 50)}`);
+          const listPanel = document.querySelector('.email-list-panel');
+          if (listPanel && window.htmx) {
+            htmx.trigger(listPanel, 'categoryChange');
+          }
+          fetch('/api/stats').then(r => r.json()).then(data => { this.stats = data; }).catch(() => {});
+        } catch(err) {}
+      });
+
+      es.addEventListener('sync_status', (e) => {
+        try {
+          const d = JSON.parse(e.data);
+          this.syncMode = d.mode;
+          this.lastSync = d.lastSync;
+        } catch(err) {}
+      });
+
+      es.addEventListener('stats_update', (e) => {
+        fetch('/api/stats').then(r => r.json()).then(data => { this.stats = data; }).catch(() => {});
+      });
+
+      es.addEventListener('heartbeat', () => {
+        // Connection alive
+      });
+
+      es.addEventListener('classification_done', (e) => {
+        const data = JSON.parse(e.data);
+        // Refresh the email list so the pending badge updates to the real category
+        const listPanel = document.querySelector('[hx-get*="/api/emails"]');
+        if (listPanel) htmx.trigger(listPanel, 'refresh');
+      });
+
+      es.onerror = () => {
+        this.syncMode = 'disconnected';
+        setTimeout(() => this.connectSSE(), 5000);
+        es.close();
+      };
+    },
+
+    toggleSidebar() {
+      this.sidebarCollapsed = !this.sidebarCollapsed;
+      // Add .collapsed class for CSS-driven visibility (brand, labels, etc.)
+      const sidebar = document.querySelector('.sidebar');
+      if (sidebar) sidebar.classList.toggle('collapsed', this.sidebarCollapsed);
+      // Transition grid column — sidebar fills its column, so both move together
+      const shell = document.querySelector('.app-shell');
+      if (shell) {
+        shell.style.gridTemplateColumns = this.sidebarCollapsed
+          ? '48px 380px 1fr'
+          : '240px 380px 1fr';
+      }
+    }
+  };
+}
+
+// ── Alpine: Draft Editor ──────────────────────────────────────────────────────
+
+function draftEditor({ emailId, initialBody, initialTone, toAddress, subject }) {
+  return {
+    emailId,
+    draftBody: initialBody || '',
+    tone: initialTone || 'professional',
+    toAddress: toAddress || '',
+    subject: subject || '',
+    regenerating: false,
+    sending: false,
+    saveStatus: 'Saved',
+
+    get wordCount() {
+      return this.draftBody.trim().split(/\s+/).filter(Boolean).length;
+    },
+
+    init() {
+      // Set up debounced save — uses lodash if available, else manual
+      if (typeof _ !== 'undefined' && _.debounce) {
+        this.debouncedSave = _.debounce(() => this.saveDraft(), 2000);
+      } else {
+        let timer;
+        this.debouncedSave = () => {
+          clearTimeout(timer);
+          timer = setTimeout(() => this.saveDraft(), 2000);
+        };
+      }
+    },
+
+    debouncedSave() {
+      // Will be replaced in init() — fallback
+      this.saveDraft();
+    },
+
+    async saveDraft() {
+      this.saveStatus = 'Saving...';
+      try {
+        await fetch(`/api/emails/${this.emailId}/draft/save`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            body: this.draftBody,
+            tone: this.tone,
+            subject: this.subject,
+            to_address: this.toAddress
+          })
+        });
+        this.saveStatus = 'Saved';
+      } catch(e) {
+        this.saveStatus = 'Save failed';
+      }
+    },
+
+    async changeTone(newTone) {
+      this.tone = newTone;
+      await this.regenerateDraft();
+    },
+
+    async regenerateDraft() {
+      this.regenerating = true;
+      this.saveStatus = 'Regenerating...';
+      try {
+        const res = await fetch(`/api/emails/${this.emailId}/draft/regen`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tone: this.tone })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          this.draftBody = data.draft_reply || '';
+          this.saveStatus = 'Regenerated';
+          showToast('success', '↻ Draft regenerated');
+        } else {
+          const err = await res.json();
+          showToast('error', '❌ Regen failed: ' + (err.error || 'Unknown error'));
+          this.saveStatus = 'Regen failed';
+        }
+      } catch(e) {
+        showToast('error', '❌ Network error during regen');
+        this.saveStatus = 'Error';
+      } finally {
+        this.regenerating = false;
+      }
+    },
+
+    async sendDraft() {
+      if (!this.toAddress) {
+        showToast('error', '❌ No recipient address');
+        return;
+      }
+      this.sending = true;
+      try {
+        const res = await fetch(`/api/emails/${this.emailId}/draft/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            body: this.draftBody,
+            tone: this.tone,
+            subject: this.subject,
+            to_address: this.toAddress
+          })
+        });
+        if (res.ok) {
+          showToast('success', '✅ Email sent successfully');
+          this.saveStatus = 'Sent';
+        } else {
+          const err = await res.json();
+          showToast('error', '❌ Send failed — ' + (err.error || 'check SMTP settings'));
+        }
+      } catch(e) {
+        showToast('error', '❌ Send failed — network error');
+      } finally {
+        this.sending = false;
+      }
+    }
+  };
+}
+
+// ── Toast System ──────────────────────────────────────────────────────────────
+
+function showToast(type, message, duration = 4000) {
+  const colors = {
+    success: 'var(--accent-green)',
+    error:   'var(--accent-red)',
+    warning: 'var(--accent-amber)',
+    info:    'var(--accent-cyan)'
+  };
+  const bg = {
+    success: 'rgba(16,185,129,0.1)',
+    error:   'rgba(239,68,68,0.1)',
+    warning: 'rgba(245,158,11,0.1)',
+    info:    'rgba(0,212,255,0.1)'
+  };
+
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.style.cssText = `
+    background: var(--bg-raised);
+    border: 1px solid ${colors[type] || colors.info};
+    color: var(--text-primary);
+    pointer-events: auto;
+  `;
+  toast.textContent = message;
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    toast.style.animation = 'toast-in 300ms reverse forwards';
+    setTimeout(() => toast.remove(), 300);
+  }, duration);
+}
+
+// ── Utility Functions ─────────────────────────────────────────────────────────
+
+function smartTime(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now - d;
+  const diffMin = Math.floor(diffMs / 60000);
+  const diffH = Math.floor(diffMs / 3600000);
+  const diffD = Math.floor(diffMs / 86400000);
+  if (diffMin < 1) return 'Just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  if (diffH < 24) return `${diffH}h ago`;
+  if (diffD === 1) return 'Yesterday';
+  if (diffD < 7) return `${diffD}d ago`;
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+}
+
+function avatarColor(name) {
+  const colors = [
+    '#3b82f6','#10b981','#f59e0b','#ef4444','#a78bfa',
+    '#f97316','#06b6d4','#84cc16','#ec4899','#6366f1'
+  ];
+  let hash = 0;
+  const str = name || '?';
+  for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  return colors[Math.abs(hash) % colors.length];
+}
+
+function categoryLabel(cat) {
+  const map = {
+    meeting_request: 'Meeting', financial: 'Financial', legal: 'Legal',
+    travel: 'Travel', pitch_deck: 'Pitch', fyi: 'FYI',
+    rewards_awards: 'Rewards', request: 'Request', other: 'Other'
+  };
+  return map[cat] || cat;
+}
+
+// ── HTMX config ───────────────────────────────────────────────────────────────
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Configure HTMX to use JSON body for POST requests where applicable
+  document.body.addEventListener('htmx:configRequest', (evt) => {
+    // Ensure HTMX requests include the right headers
+  });
+
+  // Handle HTMX errors
+  document.body.addEventListener('htmx:responseError', (evt) => {
+    showToast('error', '❌ Request failed: ' + evt.detail.xhr.status);
+  });
+});
