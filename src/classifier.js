@@ -166,9 +166,12 @@ function storeClassification(userId, emailId, data) {
       urgency:  data.urgency
     });
 
+    // Create an empty draft row for EVERY email (regardless of category).
+    // The draft editor will auto-regen on first open via the router, so users
+    // get an LLM reply on every email — inbox, urgent, fyi, anything.
     const email = db.prepare('SELECT * FROM emails WHERE id = ? AND user_id = ?').get(emailId, userId);
     const existing = db.prepare('SELECT id FROM drafts WHERE email_id = ? AND user_id = ?').get(emailId, userId);
-    if (!existing && email && !['fyi', 'other'].includes(data.category)) {
+    if (!existing && email) {
       db.prepare('INSERT INTO drafts (user_id, email_id, body, tone, subject, to_address) VALUES (?,?,?,?,?,?)')
         .run(userId, emailId, '', data.suggested_tone || 'professional', 'Re: ' + email.subject, email.from_address);
     }
