@@ -216,10 +216,15 @@ function draftEditor({ emailId, initialBody, initialTone, toAddress, subject }) 
         if (res.ok) {
           const data = await res.json();
           this.draftBody = data.draft_reply || '';
-          this.saveStatus = 'Regenerated';
-          showToast('success', '↻ Draft regenerated');
+          if (data.warning) {
+            this.saveStatus = 'Regenerated (template)';
+            showToast('warning', '⚠ ' + data.warning);
+          } else {
+            this.saveStatus = 'Regenerated';
+            showToast('success', '↻ Draft regenerated (' + (data.source || 'llm') + ')');
+          }
         } else {
-          const err = await res.json();
+          const err = await res.json().catch(() => ({}));
           showToast('error', '❌ Regen failed: ' + (err.error || 'Unknown error'));
           this.saveStatus = 'Regen failed';
         }

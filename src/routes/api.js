@@ -901,26 +901,36 @@ router.post('/api/emails/:id/draft/regen', async (req, res) => {
   const cls = db.prepare('SELECT * FROM classifications WHERE email_id = ?').get(req.params.id);
   if (!email) return res.status(404).json({ error: 'Email not found' });
 
+  const llm = require('../llm');
+  const { buildTemplateReply } = require('../llm/templates');
+
+  let draftReply, source, warning = null;
   try {
-    const llm = require('../llm');
     const routed = await llm.router.classify(email, { mode: 'regen', tone });
-    const draftReply = routed?.draft_reply
-      || cls?.draft_reply
-      || 'Thank you for your email. I will respond shortly.';
-
-    const existing = db.prepare('SELECT id FROM drafts WHERE email_id = ?').get(req.params.id);
-    if (existing) {
-      db.prepare('UPDATE drafts SET body=?, tone=?, last_edited=CURRENT_TIMESTAMP WHERE email_id=?')
-        .run(draftReply, tone, req.params.id);
+    if (routed && routed.draft_reply) {
+      draftReply = routed.draft_reply;
+      source = routed._provider;
     } else {
-      db.prepare('INSERT INTO drafts (email_id, body, tone, subject, to_address) VALUES (?,?,?,?,?)')
-        .run(req.params.id, draftReply, tone, 'Re: ' + email.subject, email.from_address);
+      draftReply = buildTemplateReply(cls || { category: 'other' }, tone);
+      source = 'template';
+      warning = 'All LLM providers unavailable — showing template reply';
     }
-
-    res.json({ draft_reply: draftReply, source: routed?._provider || 'fallback' });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    draftReply = buildTemplateReply(cls || { category: 'other' }, tone);
+    source = 'template';
+    warning = 'LLM provider error — showing template reply';
   }
+
+  const existing = db.prepare('SELECT id FROM drafts WHERE email_id = ?').get(req.params.id);
+  if (existing) {
+    db.prepare('UPDATE drafts SET body=?, tone=?, last_edited=CURRENT_TIMESTAMP WHERE email_id=?')
+      .run(draftReply, tone, req.params.id);
+  } else {
+    db.prepare('INSERT INTO drafts (email_id, body, tone, subject, to_address) VALUES (?,?,?,?,?)')
+      .run(req.params.id, draftReply, tone, 'Re: ' + email.subject, email.from_address);
+  }
+
+  res.json({ draft_reply: draftReply, source, ...(warning ? { warning } : {}) });
 });
 
 // ─── iCal Generation ─────────────────────────────────────────────────────────
