@@ -147,3 +147,23 @@ test('router skips provider when bucket is empty (regen mode)', async () => {
   const second = await r.classify({ from_address: 'x@y', subject: 's', body_text: '' }, { mode: 'regen' });
   assert.equal(second._provider, 'b');
 });
+
+test('router keeps per-user buckets separate', async () => {
+  // User A exhausts bucket; User B should still get the token.
+  let calls = 0;
+  const a = { name: 'a', defaultModel: 'x', limits: { rpm: 1, rpd: 1000 },
+    call: async () => { calls++; return { category: 'fyi', urgency: 'normal', summary: 's', draft_reply: 'r' }; } };
+  const r = require('../../src/llm/router').createRouter({
+    providers: [a],
+    getConfig: () => ({ order: ['a'], enabled: ['a'], keys: {}, models: {}, limits: {} }),
+    usage: { getCount: () => 0, increment: () => {} }
+  });
+  const email = { from_address: 'x@y', subject: 's', body_text: '' };
+
+  const r1u1 = await r.classify(email, { mode: 'regen', userId: 1 });
+  assert.equal(r1u1._provider, 'a');
+  const r2u1 = await r.classify(email, { mode: 'regen', userId: 1 });
+  assert.equal(r2u1, null);  // User 1's bucket is empty
+  const r1u2 = await r.classify(email, { mode: 'regen', userId: 2 });
+  assert.equal(r1u2._provider, 'a');  // User 2's bucket is fresh
+});
