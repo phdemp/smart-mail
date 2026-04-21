@@ -66,6 +66,8 @@ setClassifierBroadcast(broadcast);
 // Routes
 const pagesRouter = require('./routes/pages');
 const apiRouter = require('./routes/api');
+const authRouter = require('./routes/auth');
+app.use('/', authRouter);
 app.use('/', pagesRouter);
 app.use('/', apiRouter);
 
