@@ -154,11 +154,12 @@ function appState() {
 
 // ── Alpine: Draft Editor ──────────────────────────────────────────────────────
 
-function draftEditor({ emailId, initialBody, initialTone, toAddress, subject }) {
+function draftEditor({ emailId, initialBody, initialTone, initialSource, toAddress, subject }) {
   return {
     emailId,
     draftBody: initialBody || '',
     tone: initialTone || 'professional',
+    source: initialSource || null,   // 'template' | 'llm' | 'user' | null
     toAddress: toAddress || '',
     subject: subject || '',
     regenerating: false,
@@ -180,10 +181,12 @@ function draftEditor({ emailId, initialBody, initialTone, toAddress, subject }) 
           timer = setTimeout(() => this.saveDraft(), 2000);
         };
       }
-      // Auto-generate draft on first open if body is empty
-      if (!this.draftBody || !this.draftBody.trim()) {
-        this.tone = 'professional';
-        // Kick off async; don't block the UI render
+      // Auto-upgrade on first open: if the stored draft is empty OR was a
+      // template fallback, try the router now. User-edited drafts (source='user')
+      // and known-LLM drafts (source='llm') are left alone.
+      const needsRegen = !this.draftBody || !this.draftBody.trim() || this.source === 'template';
+      if (needsRegen) {
+        this.tone = this.tone || 'professional';
         this.regenerateDraft();
       }
     },
@@ -206,6 +209,9 @@ function draftEditor({ emailId, initialBody, initialTone, toAddress, subject }) 
             to_address: this.toAddress
           })
         });
+        // User-triggered save → server stores source='user'.
+        // Reflect locally so the editor doesn't auto-upgrade on next mount.
+        this.source = 'user';
         this.saveStatus = 'Saved';
       } catch(e) {
         this.saveStatus = 'Save failed';
@@ -229,6 +235,8 @@ function draftEditor({ emailId, initialBody, initialTone, toAddress, subject }) 
         if (res.ok) {
           const data = await res.json();
           this.draftBody = data.draft_reply || '';
+          // Track provenance so next mount doesn't auto-regen again.
+          this.source = data.source === 'template' ? 'template' : 'llm';
           if (data.warning) {
             this.saveStatus = 'Regenerated (template)';
             showToast('warning', '⚠ ' + data.warning);

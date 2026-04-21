@@ -135,6 +135,27 @@ for (const t of USER_ID_TABLES) {
   try { db.exec(`ALTER TABLE ${t} ADD COLUMN user_id INTEGER REFERENCES users(id)`); } catch(e) {}
 }
 
+// Draft provenance. Values: 'template' | 'llm' | 'user' | NULL (legacy/unknown).
+// 'template' drafts auto-upgrade to 'llm' the next time the email is opened.
+// 'user' drafts are never overwritten.
+try { db.exec(`ALTER TABLE drafts ADD COLUMN source TEXT`); } catch(e) {}
+
+// Backfill: tag legacy drafts whose body text matches a known template string.
+try {
+  const { GENERIC, TABLE } = require('./llm/templates');
+  const knownTemplates = new Set();
+  for (const t of Object.values(GENERIC)) knownTemplates.add(t);
+  for (const cat of Object.values(TABLE)) {
+    if (cat && typeof cat === 'object') for (const t of Object.values(cat)) knownTemplates.add(t);
+  }
+  // Hardcoded fallbacks used elsewhere in the codebase
+  knownTemplates.add('Thank you for your email. I will respond shortly.');
+  knownTemplates.add('Thank you for your email. I will review and respond shortly.');
+  const rows = db.prepare("SELECT id, body FROM drafts WHERE source IS NULL AND body IS NOT NULL AND body != ''").all();
+  const upd = db.prepare('UPDATE drafts SET source = ? WHERE id = ?');
+  for (const r of rows) if (knownTemplates.has(r.body)) upd.run('template', r.id);
+} catch {}
+
 db.exec(`
 CREATE INDEX IF NOT EXISTS idx_emails_user          ON emails(user_id);
 CREATE INDEX IF NOT EXISTS idx_classifications_user ON classifications(user_id);

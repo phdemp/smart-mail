@@ -450,19 +450,15 @@ router.get('/api/emails/:id', async (req, res) => {
   // Action zone based on category
   const actionZone = renderActionZone(cat, email, cls, extracted);
 
-  // Draft editor — generate on first open if empty
+  // Draft editor — generate on first open if empty.
+  // The `source` column tracks provenance ('template' | 'llm' | 'user' | null).
+  // The client auto-regenerates in-place when source='template' on open, so the
+  // server-side path here only needs to handle genuinely empty bodies.
   let draftBody = draft?.body || cls?.draft_reply || '';
   const draftTone = draft?.tone || cls?.suggested_tone || 'professional';
   const draftSubject = draft?.subject || 'Re: ' + email.subject;
   const draftTo = draft?.to_address || email.from_address;
-
-  if (!draftBody && cls && !['fyi', 'other'].includes(cls.category)) {
-    draftBody = await generateDraft(req.user.id, email.id);
-    if (draftBody && draft) {
-      db.prepare('UPDATE drafts SET body=?, last_edited=CURRENT_TIMESTAMP WHERE email_id=? AND user_id=?')
-        .run(draftBody, email.id, req.user.id);
-    }
-  }
+  const draftSource = draft?.source || null;
 
   const emailBody = email.body_html
     ? `<iframe srcdoc="${escHtml(email.body_html)}" style="width:100%;min-height:300px;border:none;background:white;border-radius:8px;" sandbox="allow-same-origin"></iframe>`
@@ -541,6 +537,7 @@ router.get('/api/emails/:id', async (req, res) => {
                emailId: '${email.id}',
                initialBody: \`${escHtml(draftBody).replace(/`/g, '\\`')}\`,
                initialTone: '${escHtml(draftTone)}',
+               initialSource: ${JSON.stringify(draftSource)},
                toAddress: '${escHtml(draftTo)}',
                subject: '${escHtml(draftSubject)}'
              })">
@@ -957,11 +954,12 @@ router.post('/api/emails/:id/draft/save', (req, res) => {
   const existing = db.prepare('SELECT id FROM drafts WHERE email_id = ? AND user_id = ?')
     .get(req.params.id, req.user.id);
   if (existing) {
-    db.prepare('UPDATE drafts SET body=?, tone=?, subject=?, to_address=?, last_edited=CURRENT_TIMESTAMP WHERE email_id=? AND user_id=?')
-      .run(body, tone, subject, to_address, req.params.id, req.user.id);
+    // User-saved edit — mark source='user' so auto-upgrade never clobbers it.
+    db.prepare('UPDATE drafts SET body=?, tone=?, subject=?, to_address=?, source=?, last_edited=CURRENT_TIMESTAMP WHERE email_id=? AND user_id=?')
+      .run(body, tone, subject, to_address, 'user', req.params.id, req.user.id);
   } else {
-    db.prepare('INSERT INTO drafts (email_id, user_id, body, tone, subject, to_address) VALUES (?,?,?,?,?,?)')
-      .run(req.params.id, req.user.id, body, tone, subject, to_address);
+    db.prepare('INSERT INTO drafts (email_id, user_id, body, tone, subject, to_address, source) VALUES (?,?,?,?,?,?,?)')
+      .run(req.params.id, req.user.id, body, tone, subject, to_address, 'user');
   }
   res.json({ ok: true });
 });
@@ -998,31 +996,34 @@ router.post('/api/emails/:id/draft/regen', async (req, res) => {
   const llm = require('../llm');
   const { buildTemplateReply } = require('../llm/templates');
 
-  let draftReply, source, warning = null;
+  let draftReply, source, dbSource, warning = null;
   try {
-    const routed = await llm.router.classify(email, { mode: 'regen', tone });
+    const routed = await llm.router.classify(email, { mode: 'regen', tone, userId: req.user.id });
     if (routed && routed.draft_reply) {
       draftReply = routed.draft_reply;
-      source = routed._provider;
+      source = routed._provider;    // for the UI toast: 'groq' / 'gemini' / 'local'
+      dbSource = 'llm';             // for the drafts.source column
     } else {
       draftReply = buildTemplateReply(cls || { category: 'other' }, tone);
       source = 'template';
+      dbSource = 'template';
       warning = 'All LLM providers unavailable — showing template reply';
     }
   } catch (e) {
     draftReply = buildTemplateReply(cls || { category: 'other' }, tone);
     source = 'template';
+    dbSource = 'template';
     warning = 'LLM provider error — showing template reply';
   }
 
   const existing = db.prepare('SELECT id FROM drafts WHERE email_id = ? AND user_id = ?')
     .get(req.params.id, req.user.id);
   if (existing) {
-    db.prepare('UPDATE drafts SET body=?, tone=?, last_edited=CURRENT_TIMESTAMP WHERE email_id=? AND user_id=?')
-      .run(draftReply, tone, req.params.id, req.user.id);
+    db.prepare('UPDATE drafts SET body=?, tone=?, source=?, last_edited=CURRENT_TIMESTAMP WHERE email_id=? AND user_id=?')
+      .run(draftReply, tone, dbSource, req.params.id, req.user.id);
   } else {
-    db.prepare('INSERT INTO drafts (email_id, user_id, body, tone, subject, to_address) VALUES (?,?,?,?,?,?)')
-      .run(req.params.id, req.user.id, draftReply, tone, 'Re: ' + email.subject, email.from_address);
+    db.prepare('INSERT INTO drafts (email_id, user_id, body, tone, subject, to_address, source) VALUES (?,?,?,?,?,?,?)')
+      .run(req.params.id, req.user.id, draftReply, tone, 'Re: ' + email.subject, email.from_address, dbSource);
   }
 
   res.json({ draft_reply: draftReply, source, ...(warning ? { warning } : {}) });
