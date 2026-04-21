@@ -240,6 +240,11 @@
         <span style="font-size:11px;color:var(--text-muted);margin-left:8px;">Deletes emails + classifications, keeps config</span>
       </button>
 
+      <button class="action-btn btn-ghost" @click="disconnectMailServer()" style="text-align:left;">
+        🔌 Disconnect Mail Server
+        <span style="font-size:11px;color:var(--text-muted);margin-left:8px;">Stops IMAP sync; optionally permanently deletes trash</span>
+      </button>
+
       <button class="action-btn btn-decline" @click="confirmReset=true" style="text-align:left;">
         ⚠️ Reset Everything
         <span style="font-size:11px;margin-left:8px;">Wipes all data, returns to setup</span>
@@ -330,6 +335,36 @@ function settingsApp() {
     logOut() {
       localStorage.removeItem('intellimail_token');
       location.href = '/login';
+    },
+
+    async disconnectMailServer() {
+      try {
+        // Step 1: check pending deletes
+        const check = await authFetch('/api/account/logout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ confirmed: false })
+        });
+        const data = await check.json();
+
+        let expunge = false;
+        if (data.pendingDeletes > 0) {
+          expunge = confirm(
+            `You have ${data.pendingDeletes} email${data.pendingDeletes === 1 ? '' : 's'} in Trash.\n\nPermanently delete from server before disconnecting?\n\nOK = delete permanently\nCancel = keep in Trash`
+          );
+        }
+        if (!confirm('Disconnect from mail server and stop IMAP sync?')) return;
+
+        // Step 2: stop sync (optionally expunge)
+        await authFetch('/api/account/logout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ confirmed: true, expunge })
+        });
+        showToast('success', '✓ Mail server disconnected');
+      } catch(e) {
+        showToast('error', '❌ Disconnect failed');
+      }
     },
 
     async loadProviders() {

@@ -75,34 +75,10 @@ function appState() {
       this.applyTheme(this.theme);
     },
 
-    async logout() {
-      try {
-        // Step 1: check pending deletes before disconnecting
-        const check = await authFetch('/api/account/logout', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ confirmed: false })
-        });
-        const data = await check.json();
-
-        let expunge = false;
-        if (data.pendingDeletes > 0) {
-          const choice = confirm(
-            `You have ${data.pendingDeletes} email${data.pendingDeletes === 1 ? '' : 's'} in Trash.\n\nPermanently delete from server before disconnecting?\n\nOK = Delete permanently\nCancel = Keep in Trash (can restore later)`
-          );
-          expunge = choice;
-          if (!confirm('Disconnect from mail server?')) return;
-        } else {
-          if (!confirm('Disconnect from mail server?')) return;
-        }
-
-        // Step 2: disconnect (with optional expunge)
-        await authFetch('/api/account/logout', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ confirmed: true, expunge })
-        });
-      } catch(e) {}
+    logout() {
+      // Just clear the session token and bounce to /login. IMAP sync keeps
+      // running in the background so next login shows a current inbox.
+      // Use "Disconnect mail server" in Settings to actually stop IMAP / expunge.
       localStorage.removeItem('intellimail_token');
       window.location.href = '/login';
     },
