@@ -78,3 +78,8 @@ test('CATEGORIES has the 8 expected values', () => {
     'pitch_deck','fyi','rewards_awards','other'
   ]));
 });
+
+test('parseProviderResponse forces urgent urgency for legal category', () => {
+  const raw = '{"category":"legal","urgency":"normal","summary":"s","draft_reply":"r"}';
+  assert.equal(parseProviderResponse(raw).urgency, 'urgent');
+});
