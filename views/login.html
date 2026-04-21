@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IntelliMail — Log in</title>
+  <script>
+  (function () {
+    const token = localStorage.getItem('intellimail_token');
+    if (token) { location.href = '/dashboard'; }
+  })();
+  </script>
+  <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/css/app.css">
+  <style>
+    body { display:flex; align-items:center; justify-content:center; min-height:100vh; padding:0; margin:0; overflow:auto; }
+    .login-card { max-width:420px; width:92%; padding:32px 28px; background:var(--bg-raised); border:1px solid var(--border); border-radius:12px; }
+  </style>
+</head>
+<body>
+<div id="toast-container" style="position:fixed;top:16px;right:16px;z-index:9999;"></div>
+<div class="login-card" x-data="loginApp()">
+  <h1 style="font-family:'Syne',sans-serif;font-size:24px;font-weight:700;color:var(--text-primary);margin-bottom:6px;">IntelliMail</h1>
+  <p style="font-size:13px;color:var(--text-muted);margin-bottom:24px;">Log in with your email and password</p>
+
+  <form @submit.prevent="doLogin()">
+    <div class="form-field">
+      <label>Email</label>
+      <input type="email" x-model="email" required autofocus>
+    </div>
+    <div class="form-field" style="position:relative;">
+      <label>Password</label>
+      <input :type="showPassword?'text':'password'" x-model="password" required>
+      <button @click.prevent="showPassword=!showPassword" type="button"
+              style="position:absolute;right:10px;bottom:8px;background:none;border:none;color:var(--text-muted);cursor:pointer;">
+        <span x-text="showPassword?'🙈':'👁'"></span>
+      </button>
+    </div>
+    <div x-show="error" style="color:var(--accent-red);font-size:12px;margin-bottom:12px;" x-text="error"></div>
+    <button class="action-btn btn-primary" style="width:100%;" :disabled="loading">
+      <span x-show="!loading">Log in</span>
+      <span x-show="loading">Logging in...</span>
+    </button>
+  </form>
+
+  <div style="text-align:center;margin-top:20px;font-size:13px;color:var(--text-muted);">
+    No account? <a href="/setup" style="color:var(--accent-cyan);">Sign up</a>
+  </div>
+</div>
+<script>
+function loginApp() {
+  return {
+    email: '', password: '', error: '', loading: false, showPassword: false,
+    async doLogin() {
+      this.loading = true; this.error = '';
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: this.email, password: this.password })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          localStorage.setItem('intellimail_token', data.token);
+          location.href = '/dashboard';
+        } else {
+          this.error = data.error === 'invalid_credentials'
+            ? 'Email or password incorrect.'
+            : (data.error || 'Login failed');
+        }
+      } catch(e) {
+        this.error = 'Network error';
+      } finally {
+        this.loading = false;
+      }
+    }
+  };
+}
+</script>
+</body>
+</html>
