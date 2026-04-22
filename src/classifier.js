@@ -18,30 +18,48 @@ function q(userId) {
 function rulesClassify(email) {
   const sub  = (email.subject      || '').toLowerCase();
   const from = (email.from_address || '').toLowerCase();
-  const body = (email.body_text    || '').substring(0, 300).toLowerCase();
+  // Widened body window from 300 → 1500 chars so phrases like "Booking Reference
+  // ABC123", "Amount Due", "Scheduled for ..." that usually live deeper in the
+  // body can still trigger a rule. Still cheap (<1 ms regex on 1500 chars).
+  const body = (email.body_text    || '').substring(0, 1500).toLowerCase();
   const all  = sub + ' ' + body;
 
+  // ── Travel ────────────────────────────────────────────────────────────────
   if (/\bpnr\b|booking confirm|flight booking|hotel reserv|check-in|check in|itinerary|e-ticket|boarding pass/.test(sub)) return 'travel';
   if (/indigo|spicejet|air india|airindia|vistara|goair|akasa|makemytrip|goibibo|cleartrip|booking\.com|airbnb|hotels\.com|marriott|oyo/.test(from)) return 'travel';
+  if (/\bpnr[:\s]|booking reference|flight (?:number|pnr)|departure[:\s]|arrival[:\s]|check[\s-]?in date|boarding pass|itinerary id/.test(body)) return 'travel';
 
+  // ── Financial ─────────────────────────────────────────────────────────────
   if (/statement|credit card bill|amount due|payment due|emi due|outstanding amount|invoice|receipt|transaction alert/.test(sub)) return 'financial';
   if (/hdfc|icici|axis bank|sbi|kotak|paytm|razorpay|phonepe|gpay|navi|bajaj finance|cred\.club/.test(from)) return 'financial';
+  if (/(?:amount|balance|total) due[:\s]|payment due (?:on|by|date)|minimum amount payable|outstanding balance|invoice (?:number|no|amount)|transaction (?:alert|details)|credited to your account|debited from your account/.test(body)) return 'financial';
 
+  // ── Legal ─────────────────────────────────────────────────────────────────
   if (/legal notice|without prejudice|take notice|cease and desist|\bnda\b|non.disclosure|arbitration|litigation|summons/.test(sub)) return 'legal';
+  if (/without prejudice|cease and desist|legal notice|pursuant to section|breach of contract|served with (?:a )?(?:notice|summons)|arbitration proceedings|non.?disclosure agreement/.test(body)) return 'legal';
 
+  // ── Meeting / Calendar ───────────────────────────────────────────────────
   if (/\bmeeting\b|\binvite\b|calendar invite|has invited you|scheduled a|let's connect|quick call|video call|zoom link|google meet|teams meeting|webex/.test(sub)) return 'meeting_request';
   if (/\bmeeting\b|\binvite\b|scheduled a|has invited you/.test(body) && /zoom|meet|teams|webex|calendly/.test(all)) return 'meeting_request';
+  if (/when[:\s].{0,80}(?:am|pm)|where[:\s](?:zoom|google meet|teams|webex|http)|join (?:the )?(?:zoom|meet|teams|webex|meeting)|calendar invite attached|begin:vcalendar|dtstart[:;]/.test(body)) return 'meeting_request';
 
+  // ── Rewards / Awards ─────────────────────────────────────────────────────
   if (/points expir|miles expir|reward.*expir|cashback|loyalty point|bluechip|smartbuy|reward balance|voucher|gift card|award nominat|recognition/.test(sub)) return 'rewards_awards';
+  if (/your (?:points|miles) (?:are )?expir|\d+ reward points|cashback credited|loyalty (?:program|tier)|redeem your (?:points|miles|voucher)|congratulations.{0,40}(?:award|nominat)/.test(body)) return 'rewards_awards';
 
+  // ── Pitch deck / Investment ──────────────────────────────────────────────
   if (/pitch|investment opportun|series [abcd]|funding round|seeking investment|venture capital|\bvc\b.*fund/.test(sub)) return 'pitch_deck';
+  if (/pitch deck (?:attached|included)|our (?:seed|series [a-d]) round|raising \$?\d|pre.?money valuation|(?:term sheet|cap table) attached|our portfolio includes/.test(body)) return 'pitch_deck';
 
+  // ── FYI / Newsletters / System notifications ─────────────────────────────
   if (/newsletter|weekly digest|monthly update|round.?up|unsubscribe/.test(all)) return 'fyi';
   if (/noreply@|no-reply@|newsletter@|digest@|updates@|mailer@|notifications@|donotreply@/.test(from)) return 'fyi';
   if (/\bdigest\b|\bnewsletter\b|\bweekly\b|\bmonthly\b/.test(sub) && !/meeting|invoice|statement/.test(sub)) return 'fyi';
   if (/emeritus|coursera|udemy|edx|canvas notification|assignment posted|week \d+ of|course update|programme.*notification/.test(from + ' ' + sub)) return 'fyi';
   if (/notification|alert|reminder|is now available|has been posted/.test(sub) && /noreply|system|auto/.test(from)) return 'fyi';
+  if (/unsubscribe (?:from|here|link)|view (?:this email )?in (?:your )?browser|you (?:are )?receiv(?:ing|ed) this email because|manage (?:your )?(?:preferences|subscriptions)/.test(body)) return 'fyi';
 
+  // ── Speaking / conference invites ────────────────────────────────────────
   if (/invitation to speak|keynote|panelist|speaker.*invitation|invite you to|join us for|masterclass|webinar|conference.*invite/.test(sub)) return 'meeting_request';
   if (/one.to.one|1:1|catch.?up|sync.?up|quick chat/.test(sub)) return 'meeting_request';
 
