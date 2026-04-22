@@ -235,20 +235,31 @@
     <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">Manage your local email cache and configuration.</p>
 
     <div style="display:flex;flex-direction:column;gap:10px;">
-      <button class="action-btn btn-ghost" @click="reclassifyFallback()"
-              :disabled="reclassifying || fallbackCount === 0"
-              style="text-align:left;">
-        <span x-show="!reclassifying">🔄 Reclassify with LLM</span>
-        <span x-show="reclassifying">Reclassifying…</span>
-        <span style="font-size:11px;color:var(--text-muted);margin-left:8px;">
-          <template x-if="fallbackCount > 0">
-            <span><span x-text="fallbackCount"></span> emails classified without LLM — re-queue them</span>
-          </template>
-          <template x-if="fallbackCount === 0">
-            <span>No fallback-classified emails</span>
-          </template>
-        </span>
-      </button>
+      <div>
+        <button class="action-btn btn-ghost" @click="reclassifyFallback()"
+                :disabled="reclassifying || fallbackCount === 0"
+                style="text-align:left;width:100%;">
+          <span x-show="!reclassifying">🔄 Reclassify with LLM</span>
+          <span x-show="reclassifying">🔄 Reclassifying…</span>
+          <span style="font-size:11px;color:var(--text-muted);margin-left:8px;">
+            <template x-if="!reclassifying && fallbackCount > 0">
+              <span><span x-text="fallbackCount"></span> emails classified without LLM — re-queue them</span>
+            </template>
+            <template x-if="!reclassifying && fallbackCount === 0">
+              <span>No fallback-classified emails</span>
+            </template>
+            <template x-if="reclassifying">
+              <span><span x-text="reclassifyDone"></span> / <span x-text="reclassifyTotal"></span> done</span>
+            </template>
+          </span>
+        </button>
+        <!-- Progress bar: shown only while reclassifying -->
+        <template x-if="reclassifying">
+          <div style="margin-top:8px;height:6px;background:var(--bg-raised);border:1px solid var(--border);border-radius:3px;overflow:hidden;">
+            <div :style="`height:100%;width:${reclassifyPct}%;background:var(--accent-cyan);transition:width 500ms ease-out;`"></div>
+          </div>
+        </template>
+      </div>
 
       <button class="action-btn btn-ghost" @click="clearCache()" style="text-align:left;">
         🧹 Clear Email Cache
@@ -315,6 +326,14 @@ function settingsApp() {
     dragIdx: null,
     fallbackCount: 0,
     reclassifying: false,
+    reclassifyTotal: 0,
+    reclassifyDone: 0,
+    get reclassifyPct() {
+      return this.reclassifyTotal > 0
+        ? Math.round((this.reclassifyDone / this.reclassifyTotal) * 100)
+        : 0;
+    },
+    _reclassifyTimer: null,
 
     async init() {
       // Load settings from server (source of truth)
@@ -347,23 +366,51 @@ function settingsApp() {
         { confirmLabel: 'Reclassify' }
       );
       if (!ok) return;
+      this.reclassifyTotal = this.fallbackCount;
+      this.reclassifyDone = 0;
       this.reclassifying = true;
       try {
         const res = await authFetch('/api/classifications/reclassify-fallback', { method: 'POST' });
         const data = await res.json();
         if (res.ok) {
-          showToast('success', '✓ Queued ' + data.queued + ' emails for reclassification');
-          this.fallbackCount = 0;
+          this.reclassifyTotal = data.queued;
+          this._pollReclassifyProgress();
         } else if (data.error === 'no_llm_configured') {
           showToast('error', '❌ Configure a Groq or Gemini key first');
+          this.reclassifying = false;
         } else {
           showToast('error', '❌ ' + (data.error || 'Reclassify failed'));
+          this.reclassifying = false;
         }
       } catch {
         showToast('error', '❌ Network error');
-      } finally {
         this.reclassifying = false;
       }
+    },
+
+    _pollReclassifyProgress() {
+      // Poll /api/llm/status every 2s — as the classifier processes the queue,
+      // fallback_count drops. Progress = total - remaining.
+      const tick = async () => {
+        try {
+          const res = await authFetch('/api/llm/status');
+          if (res.ok) {
+            const d = await res.json();
+            const remaining = d.fallback_count || 0;
+            this.reclassifyDone = Math.max(0, this.reclassifyTotal - remaining);
+            if (remaining === 0 || this.reclassifyDone >= this.reclassifyTotal) {
+              this.reclassifying = false;
+              this.fallbackCount = 0;
+              showToast('success', '✓ Reclassification complete (' + this.reclassifyTotal + ' emails)');
+              clearInterval(this._reclassifyTimer);
+              this._reclassifyTimer = null;
+              return;
+            }
+          }
+        } catch {}
+      };
+      tick();
+      this._reclassifyTimer = setInterval(tick, 2000);
     },
 
     async saveSettings() {
