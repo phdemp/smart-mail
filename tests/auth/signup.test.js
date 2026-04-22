@@ -50,6 +50,9 @@ test.after(() => {
 });
 
 test('signup creates user + account_config + returns token', async () => {
+  // Clean any state leaked from parallel test files that share the db module.
+  try { db.prepare('DELETE FROM account_config WHERE email LIKE ?').run('%@test.com'); } catch {}
+  try { db.prepare('DELETE FROM users WHERE email LIKE ?').run('%@test.com'); } catch {}
   imapShouldSucceed = true;
   const res = await request('POST', '/api/auth/signup', {
     email: 'alice@test.com', password: 'pw',

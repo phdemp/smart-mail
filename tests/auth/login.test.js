@@ -7,6 +7,12 @@ process.env.JWT_SECRET_PATH = path.join(__dirname, '..', '..', 'data-test-login'
 process.env.DB_PATH = path.join(__dirname, '..', '..', 'intellimail-login-test.db');
 try { fs.rmSync(process.env.DB_PATH, { force: true }); } catch {}
 
+// Stub IMAP sync so the login route's sync-nudge doesn't spawn retry timers
+// that hold the DB lock past test teardown.
+const imapModule = require('../../src/imap');
+imapModule.startSyncForUser = () => {};
+imapModule.getSyncMode = () => 'disconnected';
+
 const express = require('express');
 const authRouter = require('../../src/routes/auth');
 const { db } = require('../../src/db');
