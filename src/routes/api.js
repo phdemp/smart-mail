@@ -1145,7 +1145,30 @@ router.post('/api/settings/save', async (req, res) => {
 
 router.get('/api/providers/usage', (req, res) => {
   const { todaySummary } = require('../llm/usage');
-  res.json(todaySummary(req.user.id));
+  const { resolveConfig } = require('../llm/config');
+  const localProv    = require('../llm/providers/local');
+  const groqProv     = require('../llm/providers/groq');
+  const geminiProv   = require('../llm/providers/gemini');
+  const deepseekProv = require('../llm/providers/deepseek');
+  const defs = { local: localProv, groq: groqProv, gemini: geminiProv, deepseek: deepseekProv };
+
+  const counts = todaySummary(req.user.id);          // { provider: count }
+  const cfg = resolveConfig(req.user.id);
+  const out = {};
+  for (const name of Object.keys(defs)) {
+    const def = defs[name];
+    const userLim = (cfg.limits && cfg.limits[name]) || {};
+    const rpm = (typeof userLim.rpm === 'number' && userLim.rpm > 0) ? userLim.rpm : def.limits.rpm;
+    const rpd = (typeof userLim.rpd === 'number' && userLim.rpd > 0) ? userLim.rpd : def.limits.rpd;
+    const count = counts[name] || 0;
+    out[name] = {
+      count,
+      rpm,
+      rpd: Number.isFinite(rpd) ? rpd : null,
+      rpd_pct: Number.isFinite(rpd) && rpd > 0 ? Math.min(100, Math.round((count / rpd) * 100)) : null
+    };
+  }
+  res.json(out);
 });
 
 // ─── LLM key status + fallback reclassify ───────────────────────────────────

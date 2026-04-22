@@ -197,14 +197,32 @@
       <div style="margin-top:6px;color:var(--text-muted);">Leave blank to use the provider's default ceiling. Free tiers today: Groq ≈ 30/min &amp; ~14 400/day (watch the 12 k TPM cap on 70b); Gemini 2.5 Flash ≈ 10/min &amp; ~500/day; DeepSeek ≈ 60/min &amp; ~10 000/day.</div>
     </div>
 
-    <div style="margin-top:12px;font-size:12px;color:var(--text-muted);">
-      <div style="font-weight:600;margin-bottom:4px;">Today's usage</div>
+    <div style="margin-top:14px;font-size:12px;color:var(--text-muted);">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
+        <div style="font-weight:600;color:var(--text-secondary);">Today's usage</div>
+        <button @click="loadUsage()" :disabled="usageLoading" class="action-btn btn-ghost" style="font-size:10px;padding:2px 8px;">
+          <span x-show="!usageLoading">↻ Refresh</span>
+          <span x-show="usageLoading">…</span>
+        </button>
+      </div>
       <template x-for="p in providerList" :key="'usage-'+p.name">
-        <div>
-          <span x-text="p.name"></span>:
-          <span x-text="usage[p.name] || 0"></span>
-          <template x-if="p.rpd !== null && isFinite(p.rpd)">
-            <span> / <span x-text="p.rpd"></span></span>
+        <div style="margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">
+            <span style="color:var(--text-primary);text-transform:capitalize;" x-text="p.name"></span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;">
+              <span x-text="(usage[p.name] && usage[p.name].count) || 0"></span>
+              <template x-if="usage[p.name] && usage[p.name].rpd">
+                <span style="color:var(--text-muted);"> / <span x-text="usage[p.name].rpd"></span> <span x-text="'(' + (usage[p.name].rpd_pct || 0) + '%)'" :style="usage[p.name].rpd_pct >= 80 ? 'color:var(--accent-red);' : usage[p.name].rpd_pct >= 50 ? 'color:var(--accent-amber);' : 'color:var(--text-muted);'"></span></span>
+              </template>
+              <template x-if="usage[p.name] && !usage[p.name].rpd">
+                <span style="color:var(--text-muted);"> req (no daily cap)</span>
+              </template>
+            </span>
+          </div>
+          <template x-if="usage[p.name] && usage[p.name].rpd">
+            <div style="height:4px;background:var(--bg);border:1px solid var(--border);border-radius:2px;overflow:hidden;">
+              <div :style="`height:100%;width:${(usage[p.name].rpd_pct || 0)}%;background:${usage[p.name].rpd_pct >= 80 ? 'var(--accent-red)' : usage[p.name].rpd_pct >= 50 ? 'var(--accent-amber)' : 'var(--accent-green)'};transition:width 400ms ease-out;`"></div>
+            </div>
           </template>
         </div>
       </template>
@@ -324,6 +342,7 @@ function settingsApp() {
       { name: 'deepseek', label: 'DeepSeek',         enabled: true, apiKey: '', showKey: false, model: 'deepseek-chat',           rpm: '', rpd: '', defaultRpm: null, defaultRpd: null, testing: false }
     ],
     usage: {},
+    usageLoading: false,
     dragIdx: null,
     fallbackCount: 0,
     reclassifying: false,
@@ -503,11 +522,19 @@ function settingsApp() {
         }
         this.providerList = order.map(n => byName[n]).filter(Boolean);
         for (const p of this.providerList) p.enabled = enabled.has(p.name);
-        try {
-          const u = await authFetch('/api/providers/usage');
-          if (u.ok) this.usage = await u.json();
-        } catch {}
+        await this.loadUsage();
       } catch {}
+    },
+
+    async loadUsage() {
+      this.usageLoading = true;
+      try {
+        const u = await authFetch('/api/providers/usage');
+        if (u.ok) this.usage = await u.json();
+      } catch {
+      } finally {
+        this.usageLoading = false;
+      }
     },
 
     reorderProviders(toIdx) {
