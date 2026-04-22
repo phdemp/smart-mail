@@ -357,15 +357,17 @@ function settingsApp() {
     anyProviderUsable: true,
     healthLabel(s) {
       const m = {
-        ok: '✓ healthy', rate_limited: '⚠ rate-limited', invalid_key: '✕ invalid key',
-        breaker_open: '⚠ breaker open', http_5xx: '⚠ 5xx', timeout: '⚠ timeout',
-        network: '⚠ network', invalid_json: '⚠ parse error', unknown: '· untested'
+        ok: '✓ healthy', rate_limited: '⚠ rate-limited', service_busy: '⚠ service busy',
+        invalid_key: '✕ invalid key', breaker_open: '⚠ breaker open',
+        http_5xx: '⚠ 5xx', timeout: '⚠ timeout', network: '⚠ network',
+        invalid_json: '⚠ parse error', unknown: '· untested'
       };
       return m[s] || '';
     },
     healthStyle(s) {
       if (s === 'ok') return 'background:rgba(16,185,129,0.15);color:var(--accent-green);';
-      if (s === 'rate_limited' || s === 'breaker_open') return 'background:rgba(245,158,11,0.15);color:var(--accent-amber);';
+      if (s === 'rate_limited' || s === 'breaker_open' || s === 'service_busy')
+        return 'background:rgba(245,158,11,0.15);color:var(--accent-amber);';
       if (s === 'invalid_key' || s === 'http_5xx' || s === 'timeout' || s === 'network' || s === 'invalid_json')
         return 'background:rgba(239,68,68,0.15);color:var(--accent-red);';
       if (s === 'unknown') return 'background:rgba(148,163,184,0.15);color:var(--text-muted);';

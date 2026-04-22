@@ -104,8 +104,9 @@ function createRouter({ providers, getConfig, logger, usage }) {
           // Session-disable: bad credentials won't fix themselves at runtime.
           br.openedAt = Date.now();
           br._sessionDisabled = true;
-        } else if (outcome === 'http_429') {
-          // Quota/rate-limit — not a health problem; token bucket will keep us honest.
+        } else if (outcome === 'http_429' || outcome === 'http_503') {
+          // 429 = quota / rate-limit. 503 = provider-side "model busy / high
+          // demand" — both are transient and shouldn't trip the breaker.
         } else {
           br.fails += 1;
           if (br.fails >= BREAKER_FAILS) { br.openedAt = Date.now(); br.fails = 0; }
@@ -119,7 +120,8 @@ function createRouter({ providers, getConfig, logger, usage }) {
   function classifyError(err) {
     if (err.status === 429) return 'http_429';
     if (err.status === 401 || err.status === 403) return 'http_401';
-    if (err.status >= 500) return 'http_5xx';
+    if (err.status === 503) return 'http_503';   // provider overloaded (transient)
+    if (err.status >= 500) return 'http_5xx';    // genuine 500/502/504 — breaker-worthy
     if (err.name === 'AbortError') return 'timeout';
     if (/could not parse/i.test(err.message)) return 'invalid_json';
     return 'network';
@@ -135,6 +137,7 @@ function createRouter({ providers, getConfig, logger, usage }) {
       if (br._sessionDisabled) status = 'invalid_key';
       else if (br.openedAt && Date.now() - br.openedAt < 5 * 60 * 1000) status = 'breaker_open';
       else if (br.lastError === 'http_429') status = 'rate_limited';
+      else if (br.lastError === 'http_503') status = 'service_busy';
       else if (br.lastError && br.lastErrorAt && (!br.lastSuccessAt || br.lastErrorAt > br.lastSuccessAt)) status = br.lastError;
       else if (br.lastSuccessAt) status = 'ok';
       out[providerName] = {

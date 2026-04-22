@@ -1200,8 +1200,12 @@ router.get('/api/llm/status', (req, res) => {
     const h = health[name] || {};
     if (h.status === 'invalid_key' || h.status === 'breaker_open') return false;
     if (h.status === 'rate_limited') {
-      // Consider rate-limited providers unusable for ~10 min after the 429.
+      // 10-min cooldown after a 429.
       if (h.last_error_at && Date.now() - new Date(h.last_error_at).getTime() < 10 * 60 * 1000) return false;
+    }
+    if (h.status === 'service_busy') {
+      // Shorter cooldown for transient 503s — model overload usually clears in a few minutes.
+      if (h.last_error_at && Date.now() - new Date(h.last_error_at).getTime() < 2 * 60 * 1000) return false;
     }
     return true;
   };
