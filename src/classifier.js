@@ -30,7 +30,7 @@ function rulesClassify(email) {
   if (/\bpnr[:\s]|booking reference|flight (?:number|pnr)|departure[:\s]|arrival[:\s]|check[\s-]?in date|boarding pass|itinerary id/.test(body)) return 'travel';
 
   // ── Financial ─────────────────────────────────────────────────────────────
-  if (/statement|credit card bill|amount due|payment due|emi due|outstanding amount|invoice|receipt|transaction alert/.test(sub)) return 'financial';
+  if (/statement|credit card bill|amount due|payment due|emi due|outstanding amount|invoice|receipt|transaction alert|payment sheet|payment schedule|payment summary|payment reminder|bill payment|payslip|salary slip|tax invoice/.test(sub)) return 'financial';
   if (/hdfc|icici|axis bank|sbi|kotak|paytm|razorpay|phonepe|gpay|navi|bajaj finance|cred\.club/.test(from)) return 'financial';
   if (/(?:amount|balance|total) due[:\s]|payment due (?:on|by|date)|minimum amount payable|outstanding balance|invoice (?:number|no|amount)|transaction (?:alert|details)|credited to your account|debited from your account/.test(body)) return 'financial';
 
