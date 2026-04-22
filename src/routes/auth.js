@@ -60,22 +60,26 @@ router.post('/api/auth/signup', async (req, res) => {
 
 router.post('/api/auth/login', (req, res) => {
   const { email, password } = req.body || {};
-  console.log(`[LOGIN] attempt email=${email || '(missing)'} pw_len=${password ? password.length : 0}`);
   if (!email || !password) return res.status(400).json({ error: 'missing_fields' });
   const row = db.prepare(`
     SELECT u.id, u.email, ac.password
     FROM users u JOIN account_config ac ON ac.user_id = u.id
     WHERE u.email = ?
   `).get(email);
-  if (!row) {
-    console.log(`[LOGIN] no user+account_config join for ${email}`);
+  if (!row || row.password !== password) {
     return res.status(401).json({ error: 'invalid_credentials' });
   }
-  if (row.password !== password) {
-    console.log(`[LOGIN] password mismatch for ${email} (stored len=${row.password ? row.password.length : 0}, got len=${password.length})`);
-    return res.status(401).json({ error: 'invalid_credentials' });
+  // Nudge IMAP sync if it isn't already running for this user — covers cases
+  // where the user disconnected manually or the server was restarted without
+  // the boot-time per-user loop reaching them.
+  try {
+    const { startSyncForUser, getSyncMode } = require('../imap');
+    if (getSyncMode(row.id) === 'disconnected') {
+      startSyncForUser(row.id);
+    }
+  } catch (e) {
+    console.error('[login] failed to restart sync for user', row.id, e.message);
   }
-  console.log(`[LOGIN] success uid=${row.id}`);
   const token = signToken(row.id, row.email);
   res.json({ token, user: { id: row.id, email: row.email } });
 });
