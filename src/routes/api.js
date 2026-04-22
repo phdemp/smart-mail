@@ -176,7 +176,8 @@ router.post('/api/providers/:name/test', async (req, res) => {
   if (!allowed.has(name)) return res.status(400).json({ ok: false, error: 'Unknown provider' });
 
   const { resolveConfig } = require('../llm/config');
-  const cfg = resolveConfig();
+  // Scoped to the logged-in user — reads THEIR saved keys, not "first row".
+  const cfg = resolveConfig(req.user.id);
   const providers = {
     local:    require('../llm/providers/local'),
     groq:     require('../llm/providers/groq'),

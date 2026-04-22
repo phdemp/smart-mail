@@ -73,8 +73,8 @@ const PUBLIC_API_PATHS = new Set([
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api/')) return next();
   if (PUBLIC_API_PATHS.has(req.path)) return next();
-  // Provider test endpoint stays open so the setup wizard can test creds pre-signup
-  if (req.path.startsWith('/api/providers/') && req.path.endsWith('/test')) return next();
+  // /api/providers/:name/test is NOT public anymore — it resolves the caller's
+  // saved key from account_config, which requires knowing who the caller is.
   return requireAuth(req, res, next);
 });
 
