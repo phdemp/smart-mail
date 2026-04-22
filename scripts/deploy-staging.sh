@@ -79,45 +79,53 @@ if ! ssh "${SSH_OPTS[@]}" -o ConnectTimeout=10 "$SSH_TARGET" true; then
 fi
 ok "connected"
 
-banner "Step 2: rsync source"
-RSYNC_FLAGS=(-avz --delete)
-[ $DRY_RUN -eq 1 ] && RSYNC_FLAGS+=(--dry-run)
+banner "Step 2: package source (tar over ssh — no rsync dep)"
+# Whitelist: only ship what the Node app actually needs.
+# Everything else stays in the dev tree (Python experiments, raw datasets, etc.).
+INCLUDES=(
+  src
+  views
+  public
+  tests
+  package.json
+  package-lock.json
+  README.md
+)
 
-rsync "${RSYNC_FLAGS[@]}" \
-  -e "ssh ${SSH_OPTS[*]}" \
-  --exclude='.git/' \
-  --exclude='.gitignore' \
-  --exclude='node_modules/' \
-  --exclude='.claude/' \
-  --exclude='.deploy-env' \
-  --exclude='.env' \
-  --exclude='.env.*' \
-  --exclude='data/jwt.secret' \
-  --exclude='*.db' \
-  --exclude='*.db-wal' \
-  --exclude='*.db-shm' \
-  --exclude='*.sqlite' \
-  --exclude='*.log' \
-  --exclude='server.log' \
-  --exclude='intellimail-*-test.db*' \
-  --exclude='data-test-*/' \
-  --exclude='docs/superpowers/' \
-  --exclude='data/aeslc_raw.jsonl' \
-  --exclude='data/enron_spam_raw.jsonl' \
-  --exclude='main_*.py' \
-  --exclude='task21_*.py' \
-  --exclude='task22_*.py' \
-  --exclude='check_*.py' \
-  --exclude='deploy_*.py' \
-  --exclude='deploy.py' \
-  --exclude='diag_*.py' \
-  --exclude='fix_*.py' \
-  --exclude='read_staging*.py' \
-  --exclude='update_*.py' \
-  --exclude='verify_staging.py' \
-  --exclude='wait_and_verify.py' \
-  ./ "${SSH_TARGET}:${DEPLOY_PATH}/"
-ok "synced"
+# Inside those directories, still exclude common cruft.
+EXCL_FILE="$(mktemp)"
+trap 'rm -f "$EXCL_FILE"' EXIT
+cat > "$EXCL_FILE" <<'EOF_EXCL'
+*/node_modules
+*/.claude
+*/.DS_Store
+*/*.log
+*/*.db
+*/*.db-wal
+*/*.db-shm
+*/*.sqlite
+tests/../data-test-*
+intellimail-*-test.db*
+EOF_EXCL
+
+if [ $DRY_RUN -eq 1 ]; then
+  echo "Would transfer (first 40 files):"
+  tar --exclude-from="$EXCL_FILE" -cf - "${INCLUDES[@]}" 2>/dev/null | tar -tvf - | head -40
+  echo "... (truncated)"
+  ok "dry run ok"
+else
+  # Ensure the target dir exists. Preserve user state (DB, .env, data/, jwt.secret)
+  # by ONLY cleaning the known-code subdirs before extract.
+  ssh "${SSH_OPTS[@]}" "$SSH_TARGET" "
+    mkdir -p '$DEPLOY_PATH' &&
+    cd '$DEPLOY_PATH' &&
+    rm -rf src views public tests
+  "
+  # Stream source over ssh and extract in place.
+  tar --exclude-from="$EXCL_FILE" -czf - "${INCLUDES[@]}" \
+    | ssh "${SSH_OPTS[@]}" "$SSH_TARGET" "cd '$DEPLOY_PATH' && tar -xzf -"
+  ok "synced"
+fi
 
 if [ $SKIP_INSTALL -eq 0 ]; then
   banner "Step 3: npm install --omit=dev"
@@ -145,4 +153,6 @@ if [ $SKIP_RESTART -eq 0 ]; then
 fi
 
 banner "Done"
-echo "Open: http://${DEPLOY_HOST}:3000/login"
+# Extract the port from HEALTH_URL if possible, else fall back to 3000.
+DEPLOY_PORT=$(echo "$HEALTH_URL" | sed -n 's#.*://[^:/]*:\([0-9]*\).*#\1#p')
+echo "Open: http://${DEPLOY_HOST}:${DEPLOY_PORT:-3000}/login"
