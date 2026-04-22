@@ -138,7 +138,8 @@ async function classifyEmail(userId, emailId) {
     const summary = `${email.from_name || email.from_address} sent: ${sub.substring(0, 80)}${sub.length > 80 ? '...' : ''}.`;
     storeClassification(userId, emailId, {
       category: rulesCategory, urgency, urgency_reason, summary,
-      extracted_data: extracted, suggested_tone: 'professional', draft_reply: null
+      extracted_data: extracted, suggested_tone: 'professional', draft_reply: null,
+      source: 'rules'
     });
     return;
   }
@@ -154,27 +155,28 @@ async function classifyEmail(userId, emailId) {
         summary:        routed.summary,
         extracted_data: routed.extracted_data || {},
         suggested_tone: routed.suggested_tone || 'professional',
-        draft_reply:    routed.draft_reply    || null
+        draft_reply:    routed.draft_reply    || null,
+        source:         'llm'
       });
       return;
     }
   } catch (err) {
     console.error(`[classifier] router failed for user=${userId} email=${emailId}:`, err.message);
   }
-  storeClassification(userId, emailId, fallbackClassification());
+  storeClassification(userId, emailId, { ...fallbackClassification(), source: 'fallback' });
 }
 
 function storeClassification(userId, emailId, data) {
   try {
     db.prepare(`
       INSERT OR IGNORE INTO classifications
-      (user_id, email_id, category, urgency, urgency_reason, summary, extracted_data, draft_reply, suggested_tone)
-      VALUES (?,?,?,?,?,?,?,?,?)
+      (user_id, email_id, category, urgency, urgency_reason, summary, extracted_data, draft_reply, suggested_tone, source)
+      VALUES (?,?,?,?,?,?,?,?,?,?)
     `).run(
       userId, emailId, data.category, data.urgency, data.urgency_reason,
       data.summary,
       typeof data.extracted_data === 'string' ? data.extracted_data : JSON.stringify(data.extracted_data || {}),
-      data.draft_reply || null, data.suggested_tone
+      data.draft_reply || null, data.suggested_tone, data.source || null
     );
 
     broadcast('classification_done', {

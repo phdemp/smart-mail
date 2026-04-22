@@ -140,6 +140,14 @@ for (const t of USER_ID_TABLES) {
 // 'user' drafts are never overwritten.
 try { db.exec(`ALTER TABLE drafts ADD COLUMN source TEXT`); } catch(e) {}
 
+// Classification provenance. Values: 'rules' | 'llm' | 'fallback' | NULL (legacy).
+// 'fallback' rows can be bulk-reclassified once the user configures an LLM key.
+try { db.exec(`ALTER TABLE classifications ADD COLUMN source TEXT`); } catch(e) {}
+// Backfill: fallback rows are identified by the sentinel summary text.
+try {
+  db.prepare("UPDATE classifications SET source = 'fallback' WHERE source IS NULL AND summary = 'Classification unavailable.'").run();
+} catch {}
+
 // Backfill: tag legacy drafts whose body text matches a known template string.
 try {
   const { GENERIC, TABLE } = require('./llm/templates');

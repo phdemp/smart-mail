@@ -27,6 +27,21 @@
 
 <div class="app-shell" x-data="appState()" x-init="init()">
 
+  <!-- LLM-not-configured banner (shown when no cloud key is saved) -->
+  <template x-if="llmStatus && llmStatus.has_cloud_keys === false">
+    <div style="grid-column:1/-1;background:rgba(245,158,11,0.12);border-bottom:1px solid rgba(245,158,11,0.35);color:var(--text-primary);padding:10px 18px;display:flex;align-items:center;gap:12px;font-size:13px;">
+      <span style="font-size:16px;">⚠️</span>
+      <div style="flex:1;">
+        <b>Smart classification is disabled.</b>
+        Add a Groq or Gemini key in Settings → AI Providers to classify beyond simple pattern matching.
+        <template x-if="llmStatus.fallback_count > 0">
+          <span style="color:var(--text-muted);"> <span x-text="llmStatus.fallback_count"></span> emails are currently in "All Other" and can be reclassified once configured.</span>
+        </template>
+      </div>
+      <a href="/settings" class="action-btn btn-primary" style="font-size:12px;padding:6px 14px;text-decoration:none;">Open Settings</a>
+    </div>
+  </template>
+
   <!-- LEFT SIDEBAR -->
   <aside class="sidebar" :class="{'collapsed': sidebarCollapsed}">
 

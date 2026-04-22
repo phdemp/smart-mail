@@ -1141,6 +1141,47 @@ router.get('/api/providers/usage', (req, res) => {
   res.json(todaySummary(req.user.id));
 });
 
+// ─── LLM key status + fallback reclassify ───────────────────────────────────
+router.get('/api/llm/status', (req, res) => {
+  const cfg = getConfig(req.user.id) || {};
+  const hasGroq = !!(process.env.GROQ_API_KEY || cfg.groq_api_key);
+  const hasGemini = !!(process.env.GEMINI_API_KEY || cfg.gemini_api_key);
+  const fallbackCount = db.prepare(
+    "SELECT COUNT(*) as n FROM classifications WHERE user_id = ? AND source = 'fallback'"
+  ).get(req.user.id).n;
+  res.json({
+    has_cloud_keys: hasGroq || hasGemini,
+    has_groq: hasGroq,
+    has_gemini: hasGemini,
+    fallback_count: fallbackCount
+  });
+});
+
+router.post('/api/classifications/reclassify-fallback', (req, res) => {
+  const cfg = getConfig(req.user.id) || {};
+  const hasCloud = !!(process.env.GROQ_API_KEY || cfg.groq_api_key || process.env.GEMINI_API_KEY || cfg.gemini_api_key);
+  if (!hasCloud) return res.status(400).json({ error: 'no_llm_configured' });
+
+  const rows = db.prepare(
+    "SELECT email_id FROM classifications WHERE user_id = ? AND source = 'fallback'"
+  ).all(req.user.id);
+  const ids = rows.map(r => r.email_id);
+
+  if (ids.length === 0) return res.json({ queued: 0 });
+
+  // Drop stale fallback classifications + their template/empty drafts.
+  const delCls = db.prepare("DELETE FROM classifications WHERE email_id = ? AND user_id = ?");
+  const delDraft = db.prepare(
+    "DELETE FROM drafts WHERE email_id = ? AND user_id = ? AND (source = 'template' OR source IS NULL OR body IS NULL OR body = '')"
+  );
+  for (const id of ids) { delCls.run(id, req.user.id); delDraft.run(id, req.user.id); }
+
+  // Re-queue through the classifier — Tier 1 rules first, then LLM.
+  for (const id of ids) queueClassification(req.user.id, id);
+
+  res.json({ queued: ids.length });
+});
+
 // Sidebar partial
 router.get('/api/sidebar', (req, res) => {
   const stats = getStats(req.user.id);

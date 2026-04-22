@@ -235,6 +235,21 @@
     <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">Manage your local email cache and configuration.</p>
 
     <div style="display:flex;flex-direction:column;gap:10px;">
+      <button class="action-btn btn-ghost" @click="reclassifyFallback()"
+              :disabled="reclassifying || fallbackCount === 0"
+              style="text-align:left;">
+        <span x-show="!reclassifying">🔄 Reclassify with LLM</span>
+        <span x-show="reclassifying">Reclassifying…</span>
+        <span style="font-size:11px;color:var(--text-muted);margin-left:8px;">
+          <template x-if="fallbackCount > 0">
+            <span><span x-text="fallbackCount"></span> emails classified without LLM — re-queue them</span>
+          </template>
+          <template x-if="fallbackCount === 0">
+            <span>No fallback-classified emails</span>
+          </template>
+        </span>
+      </button>
+
       <button class="action-btn btn-ghost" @click="clearCache()" style="text-align:left;">
         🧹 Clear Email Cache
         <span style="font-size:11px;color:var(--text-muted);margin-left:8px;">Deletes emails + classifications, keeps config</span>
@@ -298,6 +313,8 @@ function settingsApp() {
     ],
     usage: {},
     dragIdx: null,
+    fallbackCount: 0,
+    reclassifying: false,
 
     async init() {
       // Load settings from server (source of truth)
@@ -309,6 +326,44 @@ function settingsApp() {
         }
       } catch(e) {}
       await this.loadProviders();
+      await this.loadLlmStatus();
+    },
+
+    async loadLlmStatus() {
+      try {
+        const res = await authFetch('/api/llm/status');
+        if (res.ok) {
+          const d = await res.json();
+          this.fallbackCount = d.fallback_count || 0;
+        }
+      } catch {}
+    },
+
+    async reclassifyFallback() {
+      if (this.fallbackCount === 0) return;
+      const ok = await window.confirmModal(
+        'Reclassify ' + this.fallbackCount + ' emails?',
+        'These emails were classified without LLM (fallback). Running them again through Groq / Gemini may take several minutes depending on your rate limits. Existing classifications will be replaced.',
+        { confirmLabel: 'Reclassify' }
+      );
+      if (!ok) return;
+      this.reclassifying = true;
+      try {
+        const res = await authFetch('/api/classifications/reclassify-fallback', { method: 'POST' });
+        const data = await res.json();
+        if (res.ok) {
+          showToast('success', '✓ Queued ' + data.queued + ' emails for reclassification');
+          this.fallbackCount = 0;
+        } else if (data.error === 'no_llm_configured') {
+          showToast('error', '❌ Configure a Groq or Gemini key first');
+        } else {
+          showToast('error', '❌ ' + (data.error || 'Reclassify failed'));
+        }
+      } catch {
+        showToast('error', '❌ Network error');
+      } finally {
+        this.reclassifying = false;
+      }
     },
 
     async saveSettings() {

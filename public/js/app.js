@@ -77,6 +77,7 @@ function appState() {
     syncMode: 'connecting',
     lastSync: null,
     theme: localStorage.getItem('im_theme') || 'dark',
+    llmStatus: null,  // { has_cloud_keys, has_groq, has_gemini, fallback_count }
 
     init() {
       // Apply saved theme
@@ -92,6 +93,12 @@ function appState() {
       authFetch('/api/sync/status')
         .then(r => r.json())
         .then(d => { this.syncMode = d.mode; this.lastSync = d.lastSync; })
+        .catch(() => {});
+
+      // Fetch LLM config status (drives the "configure AI providers" banner)
+      authFetch('/api/llm/status')
+        .then(r => r.json())
+        .then(d => { this.llmStatus = d; })
         .catch(() => {});
 
       // Set up SSE
