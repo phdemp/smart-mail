@@ -145,13 +145,17 @@
         <span style="cursor:grab;color:var(--text-muted);">☰</span>
         <input type="checkbox" x-model="p.enabled" @change="saveProviderOrder()">
         <div>
-          <div style="font-weight:600;display:flex;align-items:center;gap:8px;">
+          <div style="font-weight:600;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
             <span x-text="p.label"></span>
             <template x-if="p.name !== 'local' && p.apiKey">
               <span style="font-size:11px;font-weight:400;color:var(--accent-green);">✓ saved</span>
             </template>
             <template x-if="p.name !== 'local' && !p.apiKey">
               <span style="font-size:11px;font-weight:400;color:var(--text-muted);">no key saved</span>
+            </template>
+            <!-- Health badge driven by router state -->
+            <template x-if="providerHealth[p.name]">
+              <span :style="'font-size:11px;font-weight:500;padding:2px 8px;border-radius:4px;' + healthStyle(providerHealth[p.name].status)" x-text="healthLabel(providerHealth[p.name].status)" :title="providerHealth[p.name].last_error_msg || ''"></span>
             </template>
           </div>
           <template x-if="p.name !== 'local'">
@@ -255,13 +259,17 @@
     <div style="display:flex;flex-direction:column;gap:10px;">
       <div>
         <button class="action-btn btn-ghost" @click="reclassifyFallback()"
-                :disabled="reclassifying || fallbackCount === 0"
+                :disabled="reclassifying || fallbackCount === 0 || !anyProviderUsable"
+                :title="!anyProviderUsable ? 'All LLM providers are unavailable — check Settings → AI Providers for invalid keys or rate limits' : ''"
                 style="text-align:left;width:100%;">
           <span x-show="!reclassifying">🔄 Reclassify with LLM</span>
           <span x-show="reclassifying">🔄 Reclassifying…</span>
           <span style="font-size:11px;color:var(--text-muted);margin-left:8px;">
-            <template x-if="!reclassifying && fallbackCount > 0">
+            <template x-if="!reclassifying && fallbackCount > 0 && anyProviderUsable">
               <span><span x-text="fallbackCount"></span> emails classified without LLM — re-queue them</span>
+            </template>
+            <template x-if="!reclassifying && fallbackCount > 0 && !anyProviderUsable">
+              <span style="color:var(--accent-red);">⚠ All providers unavailable — fix keys / wait for rate-limit reset</span>
             </template>
             <template x-if="!reclassifying && fallbackCount === 0">
               <span>No fallback-classified emails</span>
@@ -345,6 +353,23 @@ function settingsApp() {
     usageLoading: false,
     dragIdx: null,
     fallbackCount: 0,
+    providerHealth: {},
+    anyProviderUsable: true,
+    healthLabel(s) {
+      const m = {
+        ok: '✓ healthy', rate_limited: '⚠ rate-limited', invalid_key: '✕ invalid key',
+        breaker_open: '⚠ breaker open', http_5xx: '⚠ 5xx', timeout: '⚠ timeout',
+        network: '⚠ network', invalid_json: '⚠ parse error', unknown: ''
+      };
+      return m[s] || '';
+    },
+    healthStyle(s) {
+      if (s === 'ok') return 'background:rgba(16,185,129,0.15);color:var(--accent-green);';
+      if (s === 'rate_limited' || s === 'breaker_open') return 'background:rgba(245,158,11,0.15);color:var(--accent-amber);';
+      if (s === 'invalid_key' || s === 'http_5xx' || s === 'timeout' || s === 'network' || s === 'invalid_json')
+        return 'background:rgba(239,68,68,0.15);color:var(--accent-red);';
+      return 'display:none;';
+    },
     reclassifying: false,
     reclassifyTotal: 0,
     reclassifyDone: 0,
@@ -374,6 +399,8 @@ function settingsApp() {
         if (res.ok) {
           const d = await res.json();
           this.fallbackCount = d.fallback_count || 0;
+          this.providerHealth = d.provider_health || {};
+          this.anyProviderUsable = d.any_provider_usable !== false;
         }
       } catch {}
     },

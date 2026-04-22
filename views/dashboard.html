@@ -33,9 +33,27 @@
       <span style="font-size:16px;">⚠️</span>
       <div style="flex:1;">
         <b>Smart classification is disabled.</b>
-        Add a Groq or Gemini key in Settings → AI Providers to classify beyond simple pattern matching.
+        Add a Groq, Gemini, or DeepSeek key in Settings → AI Providers to classify beyond simple pattern matching.
         <template x-if="llmStatus.fallback_count > 0">
           <span style="color:var(--text-muted);"> <span x-text="llmStatus.fallback_count"></span> emails are currently in "All Other" and can be reclassified once configured.</span>
+        </template>
+      </div>
+      <a href="/settings" class="action-btn btn-primary" style="font-size:12px;padding:6px 14px;text-decoration:none;">Open Settings</a>
+    </div>
+  </template>
+
+  <!-- Providers-unhealthy banner (keys saved, but all providers failing) -->
+  <template x-if="llmStatus && llmStatus.has_cloud_keys === true && llmStatus.any_provider_usable === false">
+    <div style="grid-column:1/-1;background:rgba(239,68,68,0.12);border-bottom:1px solid rgba(239,68,68,0.35);color:var(--text-primary);padding:10px 18px;display:flex;align-items:center;gap:12px;font-size:13px;">
+      <span style="font-size:16px;">⚠️</span>
+      <div style="flex:1;">
+        <b>All LLM providers are unavailable.</b>
+        <template x-for="(h, name) in (llmStatus.provider_health || {})" :key="'ph-'+name">
+          <template x-if="h.status && h.status !== 'ok' && h.status !== 'unknown'">
+            <span style="margin-right:10px;color:var(--text-muted);">
+              <span x-text="name"></span>: <span x-text="h.status.replace('_',' ')"></span>
+            </span>
+          </template>
         </template>
       </div>
       <a href="/settings" class="action-btn btn-primary" style="font-size:12px;padding:6px 14px;text-decoration:none;">Open Settings</a>

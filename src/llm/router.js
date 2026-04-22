@@ -85,13 +85,21 @@ function createRouter({ providers, getConfig, logger, usage }) {
           if (userId != null) usageApi.increment(userId, name);
           else usageApi.increment(name);
         } catch {}
-        getBreaker(userId, name).fails = 0;
+        const br = getBreaker(userId, name);
+        br.fails = 0;
+        br.lastSuccessAt = Date.now();
+        br.lastError = null;
+        br.lastErrorAt = null;
+        br.lastErrorMsg = null;
         log({ provider: name, mode: opts.mode, outcome: 'success', latency_ms: Date.now() - start, email_id: email.id, user_id: userId });
         return { ...parsed, _provider: name };
       } catch (err) {
         const outcome = classifyError(err);
         log({ provider: name, mode: opts.mode, outcome, latency_ms: Date.now() - start, email_id: email.id, user_id: userId, err: err.message });
         const br = getBreaker(userId, name);
+        br.lastError = outcome;
+        br.lastErrorAt = Date.now();
+        br.lastErrorMsg = String(err.message || '').slice(0, 300);
         if (outcome === 'http_401') {
           // Session-disable: bad credentials won't fix themselves at runtime.
           br.openedAt = Date.now();
@@ -117,7 +125,30 @@ function createRouter({ providers, getConfig, logger, usage }) {
     return 'network';
   }
 
-  return { classify, _byName: byName };
+  // Snapshot per-user provider health for UI display.
+  function getProviderHealth(userId) {
+    const out = {};
+    for (const [providerName] of byName) {
+      const br = breakers.get(key(userId, providerName));
+      if (!br) { out[providerName] = { status: 'unknown', last_error: null, last_error_at: null, last_success_at: null, last_error_msg: null }; continue; }
+      let status = 'unknown';
+      if (br._sessionDisabled) status = 'invalid_key';
+      else if (br.openedAt && Date.now() - br.openedAt < 5 * 60 * 1000) status = 'breaker_open';
+      else if (br.lastError === 'http_429') status = 'rate_limited';
+      else if (br.lastError && br.lastErrorAt && (!br.lastSuccessAt || br.lastErrorAt > br.lastSuccessAt)) status = br.lastError;
+      else if (br.lastSuccessAt) status = 'ok';
+      out[providerName] = {
+        status,
+        last_error: br.lastError || null,
+        last_error_at: br.lastErrorAt ? new Date(br.lastErrorAt).toISOString() : null,
+        last_error_msg: br.lastErrorMsg || null,
+        last_success_at: br.lastSuccessAt ? new Date(br.lastSuccessAt).toISOString() : null
+      };
+    }
+    return out;
+  }
+
+  return { classify, _byName: byName, getProviderHealth };
 }
 
 module.exports = { createRouter };

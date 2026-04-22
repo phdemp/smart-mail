@@ -1186,13 +1186,36 @@ router.get('/api/llm/status', (req, res) => {
       SELECT 1 FROM classifications c WHERE c.email_id = e.id AND c.user_id = e.user_id
     )
   `).get(req.user.id).n;
+
+  // Per-provider live health (from router in-memory state).
+  const llm = require('../llm');
+  const health = llm.router.getProviderHealth(req.user.id) || {};
+
+  // Is at least one provider plausibly usable right now?
+  const hasKey = { local: false, groq: hasGroq, gemini: hasGemini, deepseek: hasDeepseek };
+  const enabledList = ((cfg.llm_providers_enabled || 'local,groq,gemini,deepseek').split(',')).map(s => s.trim());
+  const isUsable = (name) => {
+    if (!enabledList.includes(name)) return false;
+    if (name !== 'local' && !hasKey[name]) return false;
+    const h = health[name] || {};
+    if (h.status === 'invalid_key' || h.status === 'breaker_open') return false;
+    if (h.status === 'rate_limited') {
+      // Consider rate-limited providers unusable for ~10 min after the 429.
+      if (h.last_error_at && Date.now() - new Date(h.last_error_at).getTime() < 10 * 60 * 1000) return false;
+    }
+    return true;
+  };
+  const anyUsable = ['local', 'groq', 'gemini', 'deepseek'].some(isUsable);
+
   res.json({
     has_cloud_keys: hasGroq || hasGemini || hasDeepseek,
     has_groq: hasGroq,
     has_gemini: hasGemini,
     has_deepseek: hasDeepseek,
     fallback_count: fallbackCount,
-    pending_classification_count: pendingCount
+    pending_classification_count: pendingCount,
+    provider_health: health,
+    any_provider_usable: anyUsable
   });
 });
 
