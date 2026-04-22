@@ -77,7 +77,14 @@ function appState() {
     syncMode: 'connecting',
     lastSync: null,
     theme: localStorage.getItem('im_theme') || 'dark',
-    llmStatus: null,  // { has_cloud_keys, has_groq, has_gemini, fallback_count }
+    llmStatus: null,        // { has_cloud_keys, has_groq, has_gemini, fallback_count, pending_classification_count }
+    pendingClassifying: 0,  // live count of emails currently queued / being classified
+    classifyTotal: 0,       // peak value seen since last drain — used to compute progress %
+    get classifyPct() {
+      return this.classifyTotal > 0
+        ? Math.round(((this.classifyTotal - this.pendingClassifying) / this.classifyTotal) * 100)
+        : 0;
+    },
 
     init() {
       // Apply saved theme
@@ -95,10 +102,14 @@ function appState() {
         .then(d => { this.syncMode = d.mode; this.lastSync = d.lastSync; })
         .catch(() => {});
 
-      // Fetch LLM config status (drives the "configure AI providers" banner)
+      // Fetch LLM config status (drives the "configure AI providers" banner + classify pill)
       authFetch('/api/llm/status')
         .then(r => r.json())
-        .then(d => { this.llmStatus = d; })
+        .then(d => {
+          this.llmStatus = d;
+          this.pendingClassifying = d.pending_classification_count || 0;
+          this.classifyTotal = this.pendingClassifying;
+        })
         .catch(() => {});
 
       // Set up SSE
@@ -146,6 +157,9 @@ function appState() {
             htmx.trigger(listPanel, 'categoryChange');
           }
           authFetch('/api/stats').then(r => r.json()).then(data => { this.stats = data; }).catch(() => {});
+          // New email is unclassified → bump the "classifying" counter.
+          this.pendingClassifying += 1;
+          if (this.pendingClassifying > this.classifyTotal) this.classifyTotal = this.pendingClassifying;
         } catch(err) {}
       });
 
@@ -167,10 +181,14 @@ function appState() {
 
       es.addEventListener('classification_done', (e) => {
         const data = JSON.parse(e.data);
+        // Decrement the "currently classifying" counter.
+        if (this.pendingClassifying > 0) this.pendingClassifying -= 1;
+        if (this.pendingClassifying === 0) this.classifyTotal = 0;
         // Refresh the email list so the pending badge updates to the real category
         const listPanel = document.querySelector('[hx-get*="/api/emails"]');
         if (listPanel) htmx.trigger(listPanel, 'refresh');
       });
+
 
       es.onerror = () => {
         this.syncMode = 'disconnected';

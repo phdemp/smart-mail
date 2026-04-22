@@ -1149,11 +1149,19 @@ router.get('/api/llm/status', (req, res) => {
   const fallbackCount = db.prepare(
     "SELECT COUNT(*) as n FROM classifications WHERE user_id = ? AND source = 'fallback'"
   ).get(req.user.id).n;
+  // Emails without a classification row — currently queued / being processed.
+  const pendingCount = db.prepare(`
+    SELECT COUNT(*) as n FROM emails e
+    WHERE e.user_id = ? AND NOT EXISTS (
+      SELECT 1 FROM classifications c WHERE c.email_id = e.id AND c.user_id = e.user_id
+    )
+  `).get(req.user.id).n;
   res.json({
     has_cloud_keys: hasGroq || hasGemini,
     has_groq: hasGroq,
     has_gemini: hasGemini,
-    fallback_count: fallbackCount
+    fallback_count: fallbackCount,
+    pending_classification_count: pendingCount
   });
 });
 

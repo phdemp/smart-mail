@@ -58,6 +58,34 @@
       </div>
     </div>
 
+    <style>
+      @keyframes classify-pulse {
+        0%, 100% { opacity: 1; }
+        50%      { opacity: 0.4; }
+      }
+    </style>
+    <!-- Classifying pill: visible whenever the backlog is > 0 -->
+    <template x-if="pendingClassifying > 0">
+      <div class="sidebar-expand-only" style="padding:8px 14px;margin:4px 10px;background:rgba(6,182,212,0.1);border:1px solid rgba(6,182,212,0.3);border-radius:8px;font-size:11px;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+          <span style="width:8px;height:8px;border-radius:50%;background:var(--accent-cyan);animation:classify-pulse 1.4s ease-in-out infinite;"></span>
+          <span style="color:var(--text-primary);font-weight:600;">Classifying</span>
+          <span style="color:var(--text-muted);margin-left:auto;font-family:'IBM Plex Mono',monospace;">
+            <span x-text="classifyTotal - pendingClassifying"></span>/<span x-text="classifyTotal"></span>
+          </span>
+        </div>
+        <div style="height:4px;background:var(--bg-raised);border-radius:2px;overflow:hidden;">
+          <div :style="`height:100%;width:${classifyPct}%;background:var(--accent-cyan);transition:width 400ms ease-out;`"></div>
+        </div>
+      </div>
+    </template>
+    <!-- Collapsed state: just a pulsing cyan dot -->
+    <template x-if="pendingClassifying > 0 && sidebarCollapsed">
+      <div style="display:none;" class="sidebar-collapsed-only" :style="sidebarCollapsed ? 'display:flex;justify-content:center;padding:4px 0;' : 'display:none;'">
+        <span style="width:10px;height:10px;border-radius:50%;background:var(--accent-cyan);animation:classify-pulse 1.4s ease-in-out infinite;"></span>
+      </div>
+    </template>
+
     <!-- Smart Folders (loaded via HTMX) -->
     <div id="sidebar-nav"
          hx-get="/api/sidebar"
