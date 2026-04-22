@@ -103,17 +103,34 @@ function appState() {
         .catch(() => {});
 
       // Fetch LLM config status (drives the "configure AI providers" banner + classify pill)
-      authFetch('/api/llm/status')
-        .then(r => r.json())
-        .then(d => {
-          this.llmStatus = d;
-          this.pendingClassifying = d.pending_classification_count || 0;
-          this.classifyTotal = this.pendingClassifying;
-        })
-        .catch(() => {});
+      this.refreshLlmStatus();
+      // Re-poll every 10s so the banner / pill stays current when a reclassify
+      // runs in another tab or provider health changes.
+      setInterval(() => this.refreshLlmStatus(), 10000);
 
       // Set up SSE
       this.connectSSE();
+    },
+
+    async refreshLlmStatus() {
+      try {
+        const r = await authFetch('/api/llm/status');
+        if (!r.ok) return;
+        const d = await r.json();
+        this.llmStatus = d;
+        const backendPending = d.pending_classification_count || 0;
+        // Reconcile the live counter with the server's truth:
+        //  - If server says 0 and our SSE-driven counter hasn't hit 0, trust server.
+        //  - If server says N > current local counter, adopt it (another tab's
+        //    reclassify job or a missed SSE event).
+        if (backendPending === 0) {
+          this.pendingClassifying = 0;
+          this.classifyTotal = 0;
+        } else if (backendPending > this.pendingClassifying) {
+          this.pendingClassifying = backendPending;
+          if (backendPending > this.classifyTotal) this.classifyTotal = backendPending;
+        }
+      } catch {}
     },
 
     applyTheme(theme) {
