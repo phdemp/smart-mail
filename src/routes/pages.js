@@ -3,15 +3,15 @@ const path = require('path');
 const router = express.Router();
 const views = path.join(__dirname, '..', '..', 'views');
 
-// Root: tiny HTML shell that redirects client-side.
-// - If a token is in localStorage, go straight to the dashboard.
-// - Otherwise, always land on /login. The login page has a "Sign up" link
-//   that takes first-time visitors to /setup.
+// Root: tiny HTML shell that redirects client-side based on token + user count.
 router.get('/', (req, res) => {
   res.type('html').send(`<!DOCTYPE html><script>
   (function(){
     const t = localStorage.getItem('intellimail_token');
-    location.href = t ? '/dashboard' : '/login';
+    if (t) { location.href = '/dashboard'; return; }
+    fetch('/api/users/any').then(r => r.json()).then(d => {
+      location.href = d.any ? '/login' : '/setup';
+    }).catch(() => { location.href = '/setup'; });
   })();
   </script>`);
 });
