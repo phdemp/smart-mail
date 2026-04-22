@@ -9,6 +9,7 @@ function createRouter({ providers, getConfig, logger, usage }) {
   // Keyed by `${userId}::${providerName}`. userId may be 'global' for legacy paths.
   const buckets = new Map();
   const breakers = new Map();
+  const observedLimits = new Map();  // captured from provider response headers (Groq/DeepSeek)
 
   const BREAKER_OPEN_MS = 5 * 60 * 1000;
   const BREAKER_FAILS = 3;
@@ -78,9 +79,14 @@ function createRouter({ providers, getConfig, logger, usage }) {
       const start = Date.now();
       try {
         const rawResult = await provider.call(email, opts, providerCfg);
+        // Capture provider-reported limits if the provider attached them.
+        if (rawResult && typeof rawResult === 'object' && rawResult._observedLimits) {
+          observedLimits.set(key(userId, name), rawResult._observedLimits);
+        }
         const parsed = typeof rawResult === 'string'
           ? parseProviderResponse(rawResult)
           : { ...DEFAULTS, ...rawResult };
+        delete parsed._observedLimits;  // don't leak into caller's payload
         try {
           if (userId != null) usageApi.increment(userId, name);
           else usageApi.increment(name);
@@ -151,7 +157,22 @@ function createRouter({ providers, getConfig, logger, usage }) {
     return out;
   }
 
-  return { classify, _byName: byName, getProviderHealth };
+  function getObservedLimits(userId) {
+    const out = {};
+    for (const [providerName] of byName) {
+      out[providerName] = observedLimits.get(key(userId, providerName)) || null;
+    }
+    return out;
+  }
+
+  // Public setter — called by the test endpoint which bypasses classify().
+  function setObservedLimits(userId, providerName, limits) {
+    if (limits && typeof limits === 'object') {
+      observedLimits.set(key(userId, providerName), limits);
+    }
+  }
+
+  return { classify, _byName: byName, getProviderHealth, getObservedLimits, setObservedLimits };
 }
 
 module.exports = { createRouter };

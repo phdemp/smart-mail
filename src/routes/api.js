@@ -196,6 +196,13 @@ router.post('/api/providers/:name/test', async (req, res) => {
       apiKey: cfg.keys[name],
       model:  cfg.models[name]
     });
+    // If the provider attached observed limits (Groq/DeepSeek), cache them
+    // in the router so /api/providers/usage can surface them even though
+    // this call bypassed router.classify().
+    if (result && result._observedLimits) {
+      const llm = require('../llm');
+      llm.router.setObservedLimits(req.user.id, name, result._observedLimits);
+    }
     res.json({ ok: true, category: result.category, provider: name });
   } catch (e) {
     res.status(200).json({ ok: false, error: e.message, status: e.status || null });
@@ -1154,6 +1161,8 @@ router.get('/api/providers/usage', (req, res) => {
 
   const counts = todaySummary(req.user.id);          // { provider: count }
   const cfg = resolveConfig(req.user.id);
+  const llm = require('../llm');
+  const observed = llm.router.getObservedLimits(req.user.id) || {};
   const out = {};
   for (const name of Object.keys(defs)) {
     const def = defs[name];
@@ -1165,7 +1174,8 @@ router.get('/api/providers/usage', (req, res) => {
       count,
       rpm,
       rpd: Number.isFinite(rpd) ? rpd : null,
-      rpd_pct: Number.isFinite(rpd) && rpd > 0 ? Math.min(100, Math.round((count / rpd) * 100)) : null
+      rpd_pct: Number.isFinite(rpd) && rpd > 0 ? Math.min(100, Math.round((count / rpd) * 100)) : null,
+      observed: observed[name] || null
     };
   }
   res.json(out);

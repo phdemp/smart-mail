@@ -34,13 +34,27 @@ async function call(email, opts, cfg) {
       err.status = res.status;
       throw err;
     }
+    // Groq returns rate-limit + quota usage in response headers on every call.
+    const h = res.headers;
+    const observedLimits = {
+      rpd_limit:      parseIntOr(h.get('x-ratelimit-limit-requests')),
+      rpd_remaining:  parseIntOr(h.get('x-ratelimit-remaining-requests')),
+      tpd_limit:      parseIntOr(h.get('x-ratelimit-limit-tokens')),
+      tpd_remaining:  parseIntOr(h.get('x-ratelimit-remaining-tokens')),
+      reset_requests: h.get('x-ratelimit-reset-requests') || null,
+      reset_tokens:   h.get('x-ratelimit-reset-tokens')   || null,
+      observed_at:    Date.now()
+    };
     const json = await res.json();
     const raw = json?.choices?.[0]?.message?.content || '';
-    return parseProviderResponse(raw);
+    const parsed = parseProviderResponse(raw);
+    return { ...parsed, _observedLimits: observedLimits };
   } finally {
     clearTimeout(t);
   }
 }
+
+function parseIntOr(v) { const n = parseInt(v, 10); return Number.isFinite(n) ? n : null; }
 
 module.exports = {
   name: 'groq',

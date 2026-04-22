@@ -228,6 +228,25 @@
               <div :style="`height:100%;width:${(usage[p.name].rpd_pct || 0)}%;background:${usage[p.name].rpd_pct >= 80 ? 'var(--accent-red)' : usage[p.name].rpd_pct >= 50 ? 'var(--accent-amber)' : 'var(--accent-green)'};transition:width 400ms ease-out;`"></div>
             </div>
           </template>
+          <!-- Provider-reported limits (Groq / DeepSeek only — read from x-ratelimit-* response headers) -->
+          <template x-if="usage[p.name] && usage[p.name].observed">
+            <div style="font-size:10px;color:var(--text-muted);margin-top:3px;line-height:1.5;">
+              <span style="color:var(--text-secondary);">reported by <span x-text="p.name"></span>:</span>
+              <template x-if="usage[p.name].observed.rpd_remaining !== null && usage[p.name].observed.rpd_limit !== null">
+                <span style="margin-left:4px;" x-text="usage[p.name].observed.rpd_remaining.toLocaleString() + ' / ' + usage[p.name].observed.rpd_limit.toLocaleString() + ' req remaining'"></span>
+              </template>
+              <template x-if="usage[p.name].observed.tpd_remaining !== null && usage[p.name].observed.tpd_limit !== null">
+                <span style="margin-left:4px;" :style="usage[p.name].observed.tpd_remaining / usage[p.name].observed.tpd_limit < 0.1 ? 'color:var(--accent-red);font-weight:600;' : ''" x-text="'· ' + usage[p.name].observed.tpd_remaining.toLocaleString() + ' / ' + usage[p.name].observed.tpd_limit.toLocaleString() + ' tokens remaining'"></span>
+              </template>
+              <template x-if="usage[p.name].observed.reset_tokens">
+                <span style="margin-left:4px;" x-text="'· tokens reset in ' + usage[p.name].observed.reset_tokens"></span>
+              </template>
+            </div>
+          </template>
+          <!-- Providers that don't expose limits via headers — show a short disclaimer -->
+          <template x-if="usage[p.name] && !usage[p.name].observed && p.name === 'gemini'">
+            <div style="font-size:10px;color:var(--text-muted);margin-top:3px;">documented free-tier: ~500/day, 10/min (API doesn't report live limits)</div>
+          </template>
         </div>
       </template>
     </div>

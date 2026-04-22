@@ -20,8 +20,10 @@ let current = createRouter({
 
 // Stable proxy so callers that destructure `router` keep working across reloads.
 const router = {
-  classify:           (email, opts) => current.classify(email, opts),
-  getProviderHealth:  (userId)      => current.getProviderHealth(userId)
+  classify:           (email, opts)                     => current.classify(email, opts),
+  getProviderHealth:  (userId)                          => current.getProviderHealth(userId),
+  getObservedLimits:  (userId)                          => current.getObservedLimits(userId),
+  setObservedLimits:  (userId, providerName, limits)    => current.setObservedLimits(userId, providerName, limits)
 };
 
 function reload() {
