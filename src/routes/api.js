@@ -1076,12 +1076,20 @@ router.get('/api/settings', (req, res) => {
   const groqProv     = require('../llm/providers/groq');
   const geminiProv   = require('../llm/providers/gemini');
   const deepseekProv = require('../llm/providers/deepseek');
+  // IMPORTANT: API keys and the password are never returned to the client.
+  // We expose only presence flags ("has_*"). The Settings UI shows a
+  // "✓ saved" badge when the flag is true; the input stays empty with a
+  // "Leave blank to keep existing" placeholder.
   const out = {
     ...cfg,
+    password:         undefined,
+    groq_api_key:     '',
+    gemini_api_key:   '',
+    deepseek_api_key: '',
     has_password:     !!cfg.password,
-    groq_api_key:     cfg.groq_api_key     || '',
-    gemini_api_key:   cfg.gemini_api_key   || '',
-    deepseek_api_key: cfg.deepseek_api_key || '',
+    has_groq_key:     !!cfg.groq_api_key,
+    has_gemini_key:   !!cfg.gemini_api_key,
+    has_deepseek_key: !!cfg.deepseek_api_key,
     groq_model:             cfg.groq_model     || 'llama-3.3-70b-versatile',
     gemini_model:           cfg.gemini_model   || 'gemini-2.5-flash',
     deepseek_model:         cfg.deepseek_model || 'deepseek-chat',

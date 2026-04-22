@@ -147,10 +147,10 @@
         <div>
           <div style="font-weight:600;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
             <span x-text="p.label"></span>
-            <template x-if="p.name !== 'local' && p.apiKey">
+            <template x-if="p.name !== 'local' && p.hasKey">
               <span style="font-size:11px;font-weight:400;color:var(--accent-green);">✓ saved</span>
             </template>
-            <template x-if="p.name !== 'local' && !p.apiKey">
+            <template x-if="p.name !== 'local' && !p.hasKey">
               <span style="font-size:11px;font-weight:400;color:var(--text-muted);">no key saved</span>
             </template>
             <!-- Health badge driven by router state -->
@@ -162,10 +162,12 @@
             <div style="display:flex;gap:8px;margin-top:6px;">
               <div style="flex:1;position:relative;">
                 <input :type="p.showKey?'text':'password'"
-                       :placeholder="p.name.toUpperCase() + ' API key'"
+                       :placeholder="p.hasKey ? 'Leave blank to keep existing key' : (p.name.toUpperCase() + ' API key')"
                        x-model="p.apiKey"
+                       autocomplete="off"
                        style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text-primary);padding:6px 32px 6px 10px;border-radius:4px;font-size:12px;">
                 <button @click="p.showKey = !p.showKey" type="button"
+                        :title="p.apiKey ? 'Show/hide what you are typing' : 'No key to show (saved keys are never displayed)'"
                         style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-muted);cursor:pointer;padding:2px 4px;font-size:14px;">
                   <span x-text="p.showKey?'🙈':'👁'"></span>
                 </button>
@@ -363,10 +365,10 @@ function settingsApp() {
     testing: { imap: false, smtp: false },
     testResults: { imap: null, smtp: null },
     providerList: [
-      { name: 'local',    label: 'Local (Ollama)',   enabled: true, apiKey: '', showKey: false, model: '', rpm: '', rpd: '', defaultRpm: null, defaultRpd: null, testing: false },
-      { name: 'groq',     label: 'Groq',             enabled: true, apiKey: '', showKey: false, model: 'llama-3.3-70b-versatile', rpm: '', rpd: '', defaultRpm: null, defaultRpd: null, testing: false },
-      { name: 'gemini',   label: 'Gemini 2.5 Flash', enabled: true, apiKey: '', showKey: false, model: 'gemini-2.5-flash',        rpm: '', rpd: '', defaultRpm: null, defaultRpd: null, testing: false },
-      { name: 'deepseek', label: 'DeepSeek',         enabled: true, apiKey: '', showKey: false, model: 'deepseek-chat',           rpm: '', rpd: '', defaultRpm: null, defaultRpd: null, testing: false }
+      { name: 'local',    label: 'Local (Ollama)',   enabled: true, apiKey: '', hasKey: false, showKey: false, model: '', rpm: '', rpd: '', defaultRpm: null, defaultRpd: null, testing: false },
+      { name: 'groq',     label: 'Groq',             enabled: true, apiKey: '', hasKey: false, showKey: false, model: 'llama-3.3-70b-versatile', rpm: '', rpd: '', defaultRpm: null, defaultRpd: null, testing: false },
+      { name: 'gemini',   label: 'Gemini 2.5 Flash', enabled: true, apiKey: '', hasKey: false, showKey: false, model: 'gemini-2.5-flash',        rpm: '', rpd: '', defaultRpm: null, defaultRpd: null, testing: false },
+      { name: 'deepseek', label: 'DeepSeek',         enabled: true, apiKey: '', hasKey: false, showKey: false, model: 'deepseek-chat',           rpm: '', rpd: '', defaultRpm: null, defaultRpd: null, testing: false }
     ],
     usage: {},
     usageLoading: false,
@@ -574,9 +576,12 @@ function settingsApp() {
         const enabled = new Set((cfg.llm_providers_enabled || 'local,groq,gemini').split(','));
         const byName = Object.fromEntries(this.providerList.map(p => [p.name, p]));
         const defaults = cfg.limits_defaults || {};
-        if (byName.groq)     { byName.groq.apiKey     = cfg.groq_api_key     || ''; byName.groq.model     = cfg.groq_model     || byName.groq.model; }
-        if (byName.gemini)   { byName.gemini.apiKey   = cfg.gemini_api_key   || ''; byName.gemini.model   = cfg.gemini_model   || byName.gemini.model; }
-        if (byName.deepseek) { byName.deepseek.apiKey = cfg.deepseek_api_key || ''; byName.deepseek.model = cfg.deepseek_model || byName.deepseek.model; }
+        // API keys are NEVER round-tripped to the client. We only know
+        // whether each is saved (has_*_key). The input stays empty so the
+        // user can type a replacement; the badge reflects persisted state.
+        if (byName.groq)     { byName.groq.apiKey     = ''; byName.groq.hasKey     = !!cfg.has_groq_key;     byName.groq.model     = cfg.groq_model     || byName.groq.model; }
+        if (byName.gemini)   { byName.gemini.apiKey   = ''; byName.gemini.hasKey   = !!cfg.has_gemini_key;   byName.gemini.model   = cfg.gemini_model   || byName.gemini.model; }
+        if (byName.deepseek) { byName.deepseek.apiKey = ''; byName.deepseek.hasKey = !!cfg.has_deepseek_key; byName.deepseek.model = cfg.deepseek_model || byName.deepseek.model; }
         for (const p of this.providerList) {
           p.rpm = cfg[p.name + '_rpm'] ?? '';
           p.rpd = cfg[p.name + '_rpd'] ?? '';
