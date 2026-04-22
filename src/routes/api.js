@@ -172,15 +172,16 @@ router.get('/api/account/test', async (req, res) => {
 
 router.post('/api/providers/:name/test', async (req, res) => {
   const { name } = req.params;
-  const allowed = new Set(['local', 'groq', 'gemini']);
+  const allowed = new Set(['local', 'groq', 'gemini', 'deepseek']);
   if (!allowed.has(name)) return res.status(400).json({ ok: false, error: 'Unknown provider' });
 
   const { resolveConfig } = require('../llm/config');
   const cfg = resolveConfig();
   const providers = {
-    local:  require('../llm/providers/local'),
-    groq:   require('../llm/providers/groq'),
-    gemini: require('../llm/providers/gemini')
+    local:    require('../llm/providers/local'),
+    groq:     require('../llm/providers/groq'),
+    gemini:   require('../llm/providers/gemini'),
+    deepseek: require('../llm/providers/deepseek')
   };
   const provider = providers[name];
   const sampleEmail = {
@@ -1063,23 +1064,26 @@ router.get('/api/emails/:id/ical', (req, res) => {
 
 router.get('/api/settings', (req, res) => {
   const cfg = getConfig(req.user.id) || {};
-  // Default (fallback) limits come from the provider modules
-  const localProv  = require('../llm/providers/local');
-  const groqProv   = require('../llm/providers/groq');
-  const geminiProv = require('../llm/providers/gemini');
+  const localProv    = require('../llm/providers/local');
+  const groqProv     = require('../llm/providers/groq');
+  const geminiProv   = require('../llm/providers/gemini');
+  const deepseekProv = require('../llm/providers/deepseek');
   const out = {
     ...cfg,
-    has_password:   !!cfg.password,
-    groq_api_key:   cfg.groq_api_key   || '',
-    gemini_api_key: cfg.gemini_api_key || '',
-    groq_model:             cfg.groq_model   || 'llama-3.3-70b-versatile',
-    gemini_model:           cfg.gemini_model || 'gemini-2.5-flash',
-    llm_provider_order:     cfg.llm_provider_order    || 'local,groq,gemini',
-    llm_providers_enabled:  cfg.llm_providers_enabled || 'local,groq,gemini',
+    has_password:     !!cfg.password,
+    groq_api_key:     cfg.groq_api_key     || '',
+    gemini_api_key:   cfg.gemini_api_key   || '',
+    deepseek_api_key: cfg.deepseek_api_key || '',
+    groq_model:             cfg.groq_model     || 'llama-3.3-70b-versatile',
+    gemini_model:           cfg.gemini_model   || 'gemini-2.5-flash',
+    deepseek_model:         cfg.deepseek_model || 'deepseek-chat',
+    llm_provider_order:     cfg.llm_provider_order    || 'local,groq,gemini,deepseek',
+    llm_providers_enabled:  cfg.llm_providers_enabled || 'local,groq,gemini,deepseek',
     limits_defaults: {
-      local:  { rpm: localProv.limits.rpm,  rpd: Number.isFinite(localProv.limits.rpd)  ? localProv.limits.rpd  : null },
-      groq:   { rpm: groqProv.limits.rpm,   rpd: Number.isFinite(groqProv.limits.rpd)   ? groqProv.limits.rpd   : null },
-      gemini: { rpm: geminiProv.limits.rpm, rpd: Number.isFinite(geminiProv.limits.rpd) ? geminiProv.limits.rpd : null }
+      local:    { rpm: localProv.limits.rpm,    rpd: Number.isFinite(localProv.limits.rpd)    ? localProv.limits.rpd    : null },
+      groq:     { rpm: groqProv.limits.rpm,     rpd: Number.isFinite(groqProv.limits.rpd)     ? groqProv.limits.rpd     : null },
+      gemini:   { rpm: geminiProv.limits.rpm,   rpd: Number.isFinite(geminiProv.limits.rpd)   ? geminiProv.limits.rpd   : null },
+      deepseek: { rpm: deepseekProv.limits.rpm, rpd: Number.isFinite(deepseekProv.limits.rpd) ? deepseekProv.limits.rpd : null }
     }
   };
   res.json(out);
@@ -1116,13 +1120,15 @@ router.post('/api/settings/save', async (req, res) => {
     const providerUpdates = {};
     // Only overwrite saved API keys if the client actually sent a non-empty value.
     // Empty string from a blank password field means "keep existing", not "clear it".
-    if (body.groq_api_key)   providerUpdates.groq_api_key   = body.groq_api_key;
-    if (body.gemini_api_key) providerUpdates.gemini_api_key = body.gemini_api_key;
-    if (body.groq_model)            providerUpdates.groq_model   = body.groq_model;
-    if (body.gemini_model)          providerUpdates.gemini_model = body.gemini_model;
+    if (body.groq_api_key)     providerUpdates.groq_api_key     = body.groq_api_key;
+    if (body.gemini_api_key)   providerUpdates.gemini_api_key   = body.gemini_api_key;
+    if (body.deepseek_api_key) providerUpdates.deepseek_api_key = body.deepseek_api_key;
+    if (body.groq_model)            providerUpdates.groq_model     = body.groq_model;
+    if (body.gemini_model)          providerUpdates.gemini_model   = body.gemini_model;
+    if (body.deepseek_model)        providerUpdates.deepseek_model = body.deepseek_model;
     if (body.llm_provider_order)    providerUpdates.order        = body.llm_provider_order;
     if (body.llm_providers_enabled) providerUpdates.enabled      = body.llm_providers_enabled;
-    for (const [p, col] of [['groq','groq'],['gemini','gemini'],['local','local']]) {
+    for (const [p, col] of [['groq','groq'],['gemini','gemini'],['deepseek','deepseek'],['local','local']]) {
       if (body[col + '_rpm'] !== undefined) providerUpdates[col + '_rpm'] = body[col + '_rpm'];
       if (body[col + '_rpd'] !== undefined) providerUpdates[col + '_rpd'] = body[col + '_rpd'];
     }
@@ -1146,10 +1152,10 @@ router.get('/api/llm/status', (req, res) => {
   const cfg = getConfig(req.user.id) || {};
   const hasGroq = !!(process.env.GROQ_API_KEY || cfg.groq_api_key);
   const hasGemini = !!(process.env.GEMINI_API_KEY || cfg.gemini_api_key);
+  const hasDeepseek = !!(process.env.DEEPSEEK_API_KEY || cfg.deepseek_api_key);
   const fallbackCount = db.prepare(
     "SELECT COUNT(*) as n FROM classifications WHERE user_id = ? AND source = 'fallback'"
   ).get(req.user.id).n;
-  // Emails without a classification row — currently queued / being processed.
   const pendingCount = db.prepare(`
     SELECT COUNT(*) as n FROM emails e
     WHERE e.user_id = ? AND NOT EXISTS (
@@ -1157,9 +1163,10 @@ router.get('/api/llm/status', (req, res) => {
     )
   `).get(req.user.id).n;
   res.json({
-    has_cloud_keys: hasGroq || hasGemini,
+    has_cloud_keys: hasGroq || hasGemini || hasDeepseek,
     has_groq: hasGroq,
     has_gemini: hasGemini,
+    has_deepseek: hasDeepseek,
     fallback_count: fallbackCount,
     pending_classification_count: pendingCount
   });
@@ -1167,7 +1174,11 @@ router.get('/api/llm/status', (req, res) => {
 
 router.post('/api/classifications/reclassify-fallback', (req, res) => {
   const cfg = getConfig(req.user.id) || {};
-  const hasCloud = !!(process.env.GROQ_API_KEY || cfg.groq_api_key || process.env.GEMINI_API_KEY || cfg.gemini_api_key);
+  const hasCloud = !!(
+    process.env.GROQ_API_KEY || cfg.groq_api_key ||
+    process.env.GEMINI_API_KEY || cfg.gemini_api_key ||
+    process.env.DEEPSEEK_API_KEY || cfg.deepseek_api_key
+  );
   if (!hasCloud) return res.status(400).json({ error: 'no_llm_configured' });
 
   const rows = db.prepare(

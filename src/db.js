@@ -89,20 +89,36 @@ try { db.exec('ALTER TABLE emails ADD COLUMN is_deleted INTEGER DEFAULT 0'); } c
 const PROVIDER_COLS = [
   ['groq_api_key',          'TEXT'],
   ['gemini_api_key',        'TEXT'],
+  ['deepseek_api_key',      'TEXT'],
   ['groq_model',            "TEXT DEFAULT 'llama-3.3-70b-versatile'"],
   ['gemini_model',          "TEXT DEFAULT 'gemini-2.5-flash'"],
-  ['llm_provider_order',    "TEXT DEFAULT 'local,groq,gemini'"],
-  ['llm_providers_enabled', "TEXT DEFAULT 'local,groq,gemini'"],
+  ['deepseek_model',        "TEXT DEFAULT 'deepseek-chat'"],
+  ['llm_provider_order',    "TEXT DEFAULT 'local,groq,gemini,deepseek'"],
+  ['llm_providers_enabled', "TEXT DEFAULT 'local,groq,gemini,deepseek'"],
   ['groq_rpm',              'INTEGER'],
   ['groq_rpd',              'INTEGER'],
   ['gemini_rpm',            'INTEGER'],
   ['gemini_rpd',            'INTEGER'],
+  ['deepseek_rpm',          'INTEGER'],
+  ['deepseek_rpd',          'INTEGER'],
   ['local_rpm',             'INTEGER'],
   ['local_rpd',             'INTEGER']
 ];
 for (const [col, type] of PROVIDER_COLS) {
   try { db.exec(`ALTER TABLE account_config ADD COLUMN ${col} ${type}`); } catch(e) {}
 }
+
+// Append 'deepseek' to existing provider_order / providers_enabled strings that don't already include it.
+try {
+  db.prepare(`UPDATE account_config SET llm_provider_order = llm_provider_order || ',deepseek'
+              WHERE llm_provider_order IS NOT NULL
+              AND llm_provider_order != ''
+              AND llm_provider_order NOT LIKE '%deepseek%'`).run();
+  db.prepare(`UPDATE account_config SET llm_providers_enabled = llm_providers_enabled || ',deepseek'
+              WHERE llm_providers_enabled IS NOT NULL
+              AND llm_providers_enabled != ''
+              AND llm_providers_enabled NOT LIKE '%deepseek%'`).run();
+} catch {}
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS provider_usage (

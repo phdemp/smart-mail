@@ -194,7 +194,7 @@
       <div style="font-weight:600;color:var(--text-secondary);margin-bottom:4px;">What RPM &amp; RPD mean</div>
       <div><b>RPM</b> (Requests Per Minute): caps how many API calls this provider gets in any 60‑second window. Enforced client‑side by a token bucket — if full, the request queues up to 2s (regen) or 30s (classify), then falls through to the next provider.</div>
       <div style="margin-top:4px;"><b>RPD</b> (Requests Per Day): total allowed calls in 24 h, resets at midnight UTC. Tracked in the local DB. When exhausted, the router skips this provider with <code>skipped_quota</code> and tries the next one.</div>
-      <div style="margin-top:6px;color:var(--text-muted);">Leave blank to use the provider's default ceiling. Free tiers today: Groq ≈ 30/min &amp; ~14 400/day (but watch the 12 k tokens‑per‑minute cap on 70b); Gemini 2.5 Flash ≈ 10/min &amp; ~500/day.</div>
+      <div style="margin-top:6px;color:var(--text-muted);">Leave blank to use the provider's default ceiling. Free tiers today: Groq ≈ 30/min &amp; ~14 400/day (watch the 12 k TPM cap on 70b); Gemini 2.5 Flash ≈ 10/min &amp; ~500/day; DeepSeek ≈ 60/min &amp; ~10 000/day.</div>
     </div>
 
     <div style="margin-top:12px;font-size:12px;color:var(--text-muted);">
@@ -318,9 +318,10 @@ function settingsApp() {
     testing: { imap: false, smtp: false },
     testResults: { imap: null, smtp: null },
     providerList: [
-      { name: 'local',  label: 'Local (Ollama)',   enabled: true, apiKey: '', showKey: false, model: '', rpm: '', rpd: '', defaultRpm: null, defaultRpd: null, testing: false },
-      { name: 'groq',   label: 'Groq',             enabled: true, apiKey: '', showKey: false, model: 'llama-3.3-70b-versatile', rpm: '', rpd: '', defaultRpm: null, defaultRpd: null, testing: false },
-      { name: 'gemini', label: 'Gemini 2.5 Flash', enabled: true, apiKey: '', showKey: false, model: 'gemini-2.5-flash',        rpm: '', rpd: '', defaultRpm: null, defaultRpd: null, testing: false }
+      { name: 'local',    label: 'Local (Ollama)',   enabled: true, apiKey: '', showKey: false, model: '', rpm: '', rpd: '', defaultRpm: null, defaultRpd: null, testing: false },
+      { name: 'groq',     label: 'Groq',             enabled: true, apiKey: '', showKey: false, model: 'llama-3.3-70b-versatile', rpm: '', rpd: '', defaultRpm: null, defaultRpd: null, testing: false },
+      { name: 'gemini',   label: 'Gemini 2.5 Flash', enabled: true, apiKey: '', showKey: false, model: 'gemini-2.5-flash',        rpm: '', rpd: '', defaultRpm: null, defaultRpd: null, testing: false },
+      { name: 'deepseek', label: 'DeepSeek',         enabled: true, apiKey: '', showKey: false, model: 'deepseek-chat',           rpm: '', rpd: '', defaultRpm: null, defaultRpd: null, testing: false }
     ],
     usage: {},
     dragIdx: null,
@@ -491,8 +492,9 @@ function settingsApp() {
         const enabled = new Set((cfg.llm_providers_enabled || 'local,groq,gemini').split(','));
         const byName = Object.fromEntries(this.providerList.map(p => [p.name, p]));
         const defaults = cfg.limits_defaults || {};
-        if (byName.groq)   { byName.groq.apiKey   = cfg.groq_api_key   || ''; byName.groq.model   = cfg.groq_model   || byName.groq.model; }
-        if (byName.gemini) { byName.gemini.apiKey = cfg.gemini_api_key || ''; byName.gemini.model = cfg.gemini_model || byName.gemini.model; }
+        if (byName.groq)     { byName.groq.apiKey     = cfg.groq_api_key     || ''; byName.groq.model     = cfg.groq_model     || byName.groq.model; }
+        if (byName.gemini)   { byName.gemini.apiKey   = cfg.gemini_api_key   || ''; byName.gemini.model   = cfg.gemini_model   || byName.gemini.model; }
+        if (byName.deepseek) { byName.deepseek.apiKey = cfg.deepseek_api_key || ''; byName.deepseek.model = cfg.deepseek_model || byName.deepseek.model; }
         for (const p of this.providerList) {
           p.rpm = cfg[p.name + '_rpm'] ?? '';
           p.rpd = cfg[p.name + '_rpd'] ?? '';
@@ -533,8 +535,9 @@ function settingsApp() {
         llm_providers_enabled: this.providerList.filter(p => p.enabled).map(p => p.name).join(',')
       };
       for (const p of this.providerList) {
-        if (p.name === 'groq')   { payload.groq_api_key   = p.apiKey; payload.groq_model   = p.model; }
-        if (p.name === 'gemini') { payload.gemini_api_key = p.apiKey; payload.gemini_model = p.model; }
+        if (p.name === 'groq')     { payload.groq_api_key     = p.apiKey; payload.groq_model     = p.model; }
+        if (p.name === 'gemini')   { payload.gemini_api_key   = p.apiKey; payload.gemini_model   = p.model; }
+        if (p.name === 'deepseek') { payload.deepseek_api_key = p.apiKey; payload.deepseek_model = p.model; }
         payload[p.name + '_rpm'] = p.rpm === '' ? null : p.rpm;
         payload[p.name + '_rpd'] = p.rpd === '' ? null : p.rpd;
       }
