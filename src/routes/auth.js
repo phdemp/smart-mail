@@ -46,6 +46,14 @@ router.post('/api/auth/signup', async (req, res) => {
   `).run(userId, cfg.display_name, cfg.email, cfg.imap_host, cfg.imap_port, cfg.imap_tls,
          cfg.smtp_host, cfg.smtp_port, cfg.smtp_tls, cfg.username, cfg.password, cfg.sync_interval);
 
+  // Kick off IMAP sync in the background — the caller gets their token right away.
+  try {
+    const { startSyncForUser } = require('../imap');
+    startSyncForUser(userId);
+  } catch (e) {
+    console.error('[signup] failed to start sync for user', userId, e.message);
+  }
+
   const token = signToken(userId, cfg.email);
   res.json({ token, user: { id: userId, email: cfg.email } });
 });
