@@ -1,0 +1,39 @@
+# systemd unit for IntelliMail — install once on the staging box.
+#
+# Install:
+#   sudo cp scripts/intellimail.service /etc/systemd/system/intellimail.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now intellimail
+#
+# Check:
+#   systemctl status intellimail
+#   journalctl -u intellimail -n 100 --no-pager
+#
+# Edit WorkingDirectory + User below to match your actual staging layout.
+
+[Unit]
+Description=IntelliMail (Node.js)
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/AjayData/xgen-intel/intellimail
+Environment=NODE_ENV=production
+Environment=PORT=3000
+# Secrets — prefer filling these via /etc/default/intellimail instead of the unit:
+EnvironmentFile=-/etc/default/intellimail
+ExecStart=/usr/bin/node src/server.js
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/var/log/intellimail/stdout.log
+StandardError=append:/var/log/intellimail/stderr.log
+# Security hardening (tighten as needed — 'root' user above may conflict with some of these):
+# ProtectSystem=strict
+# ReadWritePaths=/home/AjayData/xgen-intel/intellimail
+# NoNewPrivileges=yes
+# PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

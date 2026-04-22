@@ -9,3 +9,4 @@ server.log
 data/jwt.secret
 data-test-*/
 intellimail-*-test.db*
+.deploy-env
