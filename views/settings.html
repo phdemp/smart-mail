@@ -359,7 +359,7 @@ function settingsApp() {
       const m = {
         ok: '✓ healthy', rate_limited: '⚠ rate-limited', invalid_key: '✕ invalid key',
         breaker_open: '⚠ breaker open', http_5xx: '⚠ 5xx', timeout: '⚠ timeout',
-        network: '⚠ network', invalid_json: '⚠ parse error', unknown: ''
+        network: '⚠ network', invalid_json: '⚠ parse error', unknown: '· untested'
       };
       return m[s] || '';
     },
@@ -368,6 +368,7 @@ function settingsApp() {
       if (s === 'rate_limited' || s === 'breaker_open') return 'background:rgba(245,158,11,0.15);color:var(--accent-amber);';
       if (s === 'invalid_key' || s === 'http_5xx' || s === 'timeout' || s === 'network' || s === 'invalid_json')
         return 'background:rgba(239,68,68,0.15);color:var(--accent-red);';
+      if (s === 'unknown') return 'background:rgba(148,163,184,0.15);color:var(--text-muted);';
       return 'display:none;';
     },
     reclassifying: false,
@@ -443,8 +444,22 @@ function settingsApp() {
           const res = await authFetch('/api/llm/status');
           if (res.ok) {
             const d = await res.json();
+            this.providerHealth = d.provider_health || {};
+            this.anyProviderUsable = d.any_provider_usable !== false;
             const remaining = d.fallback_count || 0;
             this.reclassifyDone = Math.max(0, this.reclassifyTotal - remaining);
+
+            // Abort early if all providers went unusable — no point burning
+            // more cycles if every classification will just re-land in fallback.
+            if (!this.anyProviderUsable && remaining > 0) {
+              this.reclassifying = false;
+              this.fallbackCount = remaining;
+              showToast('error', '❌ Reclassify stopped — all LLM providers unavailable');
+              clearInterval(this._reclassifyTimer);
+              this._reclassifyTimer = null;
+              return;
+            }
+
             if (remaining === 0 || this.reclassifyDone >= this.reclassifyTotal) {
               this.reclassifying = false;
               this.fallbackCount = 0;
