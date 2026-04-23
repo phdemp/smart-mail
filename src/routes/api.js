@@ -191,20 +191,21 @@ router.post('/api/providers/:name/test', async (req, res) => {
     subject:      'Test classification — please reply',
     body_text:    'This is a synthetic test email used to verify the provider responds correctly.'
   };
+  const keyLen = (cfg.keys[name] || '').length;
+  console.log(`[PROVIDER TEST] user=${req.user.id} provider=${name} model=${cfg.models[name]} key_len=${keyLen}`);
   try {
     const result = await provider.call(sampleEmail, { mode: 'full' }, {
       apiKey: cfg.keys[name],
       model:  cfg.models[name]
     });
-    // If the provider attached observed limits (Groq/DeepSeek), cache them
-    // in the router so /api/providers/usage can surface them even though
-    // this call bypassed router.classify().
     if (result && result._observedLimits) {
       const llm = require('../llm');
       llm.router.setObservedLimits(req.user.id, name, result._observedLimits);
     }
+    console.log(`[PROVIDER TEST] OK user=${req.user.id} provider=${name} category=${result.category}`);
     res.json({ ok: true, category: result.category, provider: name });
   } catch (e) {
+    console.log(`[PROVIDER TEST] FAIL user=${req.user.id} provider=${name} status=${e.status || '?'} msg=${e.message}`);
     res.status(200).json({ ok: false, error: e.message, status: e.status || null });
   }
 });
