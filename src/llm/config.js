@@ -22,7 +22,7 @@ function resolveConfig(userId) {
   const models = {
     local:    null,
     groq:     row.groq_model     || 'llama-3.3-70b-versatile',
-    gemini:   row.gemini_model   || 'gemini-2.5-flash',
+    gemini:   row.gemini_model   || 'gemini-flash-latest',
     deepseek: row.deepseek_model || 'deepseek-chat'
   };
   // User-override limits; null values let the router fall back to provider defaults

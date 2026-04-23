@@ -91,7 +91,7 @@ const PROVIDER_COLS = [
   ['gemini_api_key',        'TEXT'],
   ['deepseek_api_key',      'TEXT'],
   ['groq_model',            "TEXT DEFAULT 'llama-3.3-70b-versatile'"],
-  ['gemini_model',          "TEXT DEFAULT 'gemini-2.5-flash'"],
+  ['gemini_model',          "TEXT DEFAULT 'gemini-flash-latest'"],
   ['deepseek_model',        "TEXT DEFAULT 'deepseek-chat'"],
   ['llm_provider_order',    "TEXT DEFAULT 'local,groq,gemini,deepseek'"],
   ['llm_providers_enabled', "TEXT DEFAULT 'local,groq,gemini,deepseek'"],

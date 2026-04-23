@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const gemini = require('../../../src/llm/providers/gemini');
 
-test('gemini posts to generateContent with key in query string', async () => {
+test('gemini posts to generateContent with key in X-goog-api-key header', async () => {
   const orig = global.fetch;
   let seenUrl, seenOpts;
   global.fetch = async (url, opts) => {
@@ -19,9 +19,10 @@ test('gemini posts to generateContent with key in query string', async () => {
   };
   try {
     const email = { from_address: 'x@y.com', subject: 'News', body_text: 'weekly digest' };
-    const out = await gemini.call(email, { mode: 'full' }, { apiKey: 'g-test', model: 'gemini-2.5-flash' });
-    assert.ok(seenUrl.startsWith('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'));
-    assert.match(seenUrl, /key=g-test/);
+    const out = await gemini.call(email, { mode: 'full' }, { apiKey: 'g-test', model: 'gemini-flash-latest' });
+    assert.ok(seenUrl.startsWith('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent'));
+    assert.doesNotMatch(seenUrl, /key=/);
+    assert.equal(seenOpts.headers['X-goog-api-key'], 'g-test');
     const body = JSON.parse(seenOpts.body);
     assert.equal(body.generationConfig.responseMimeType, 'application/json');
     assert.ok(Array.isArray(body.contents) && body.contents[0].parts[0].text.length > 0);
@@ -43,7 +44,7 @@ test('gemini tags 429 on quota error', async () => {
   global.fetch = async () => ({ ok: false, status: 429, text: async () => 'quota' });
   try {
     await assert.rejects(
-      () => gemini.call({ from_address: 'a@b.com', subject: 'x' }, {}, { apiKey: 'k', model: 'gemini-2.5-flash' }),
+      () => gemini.call({ from_address: 'a@b.com', subject: 'x' }, {}, { apiKey: 'k', model: 'gemini-flash-latest' }),
       (err) => err.status === 429
     );
   } finally {

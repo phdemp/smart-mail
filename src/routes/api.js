@@ -1091,7 +1091,7 @@ router.get('/api/settings', (req, res) => {
     has_gemini_key:   !!cfg.gemini_api_key,
     has_deepseek_key: !!cfg.deepseek_api_key,
     groq_model:             cfg.groq_model     || 'llama-3.3-70b-versatile',
-    gemini_model:           cfg.gemini_model   || 'gemini-2.5-flash',
+    gemini_model:           cfg.gemini_model   || 'gemini-flash-latest',
     deepseek_model:         cfg.deepseek_model || 'deepseek-chat',
     llm_provider_order:     cfg.llm_provider_order    || 'local,groq,gemini,deepseek',
     llm_providers_enabled:  cfg.llm_providers_enabled || 'local,groq,gemini,deepseek',

@@ -8,11 +8,13 @@ process.env.DB_PATH = path.join(__dirname, '..', '..', 'intellimail-signup-test.
 
 try { fs.rmSync(process.env.DB_PATH, { force: true }); } catch {}
 
-// Mock testImap to avoid real network during tests
+// Mock testImap + startSyncForUser to avoid real network + dangling IDLE timers during tests
 const imapModule = require('../../src/imap');
 const originalTestImap = imapModule.testImap;
+const originalStartSync = imapModule.startSyncForUser;
 let imapShouldSucceed = true;
 imapModule.testImap = async () => ({ ok: imapShouldSucceed, error: imapShouldSucceed ? null : 'mocked IMAP fail' });
+imapModule.startSyncForUser = () => { /* no-op in tests */ };
 
 const express = require('express');
 const authRouter = require('../../src/routes/auth');
@@ -45,6 +47,7 @@ function request(method, url, body) {
 
 test.after(() => {
   imapModule.testImap = originalTestImap;
+  imapModule.startSyncForUser = originalStartSync;
   try { fs.rmSync(process.env.DB_PATH, { force: true }); } catch {}
   try { fs.rmSync(path.dirname(process.env.JWT_SECRET_PATH), { recursive: true, force: true }); } catch {}
 });

@@ -1,7 +1,7 @@
 const { buildPrompt, parseProviderResponse, SYSTEM_PROMPT } = require('./base');
 
-function urlFor(model, apiKey) {
-  return `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+function urlFor(model) {
+  return `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
 }
 
 async function call(email, opts, cfg) {
@@ -10,13 +10,17 @@ async function call(email, opts, cfg) {
     err.status = 401;
     throw err;
   }
-  const model = cfg.model || 'gemini-2.5-flash';
+  const model = cfg.model || 'gemini-flash-latest';
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), 10_000);
   try {
-    const res = await fetch(urlFor(model, cfg.apiKey), {
+    const res = await fetch(urlFor(model), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        // Google's recommended auth for the Generative Language API.
+        'X-goog-api-key': cfg.apiKey
+      },
       body: JSON.stringify({
         contents: [
           { role: 'user', parts: [{ text: SYSTEM_PROMPT + '\n\n' + buildPrompt(email, opts) }] }
@@ -44,7 +48,7 @@ async function call(email, opts, cfg) {
 
 module.exports = {
   name: 'gemini',
-  defaultModel: 'gemini-2.5-flash',
+  defaultModel: 'gemini-flash-latest',
   limits: { rpm: 8, rpd: 450 },
   call
 };

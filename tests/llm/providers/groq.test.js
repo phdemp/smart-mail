@@ -9,6 +9,7 @@ test('groq posts chat completion with bearer key and json_object format', async 
     seenUrl = url; seenOpts = opts;
     return {
       ok: true, status: 200,
+      headers: { get: () => null },
       json: async () => ({
         choices: [{ message: { content: JSON.stringify({
           category: 'financial', urgency: 'moderate', summary: 's',
