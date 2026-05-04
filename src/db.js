@@ -87,20 +87,27 @@ try { db.exec('ALTER TABLE emails ADD COLUMN is_deleted INTEGER DEFAULT 0'); } c
 
 // ─── LLM provider config + usage ─────────────────────────────────────────
 const PROVIDER_COLS = [
+  ['nvidia_api_key',        'TEXT'],
   ['groq_api_key',          'TEXT'],
   ['gemini_api_key',        'TEXT'],
   ['deepseek_api_key',      'TEXT'],
+  ['nvidia_model',          "TEXT DEFAULT 'meta/llama-3.3-70b-instruct'"],
   ['groq_model',            "TEXT DEFAULT 'llama-3.3-70b-versatile'"],
   ['gemini_model',          "TEXT DEFAULT 'gemini-flash-latest'"],
   ['deepseek_model',        "TEXT DEFAULT 'deepseek-chat'"],
-  ['llm_provider_order',    "TEXT DEFAULT 'local,groq,gemini,deepseek'"],
-  ['llm_providers_enabled', "TEXT DEFAULT 'local,groq,gemini,deepseek'"],
+  ['llm_provider_order',    "TEXT DEFAULT 'nvidia,groq,gemini,deepseek'"],
+  ['llm_providers_enabled', "TEXT DEFAULT 'nvidia,groq,gemini,deepseek'"],
+  ['nvidia_rpm',            'INTEGER'],
+  ['nvidia_rpd',            'INTEGER'],
   ['groq_rpm',              'INTEGER'],
   ['groq_rpd',              'INTEGER'],
   ['gemini_rpm',            'INTEGER'],
   ['gemini_rpd',            'INTEGER'],
   ['deepseek_rpm',          'INTEGER'],
   ['deepseek_rpd',          'INTEGER'],
+  // Legacy columns from the old Ollama-backed 'local' provider. SQLite
+  // can't drop columns cheaply, and leaving them avoids breaking older
+  // SELECT * callers — they're ignored by application code.
   ['local_rpm',             'INTEGER'],
   ['local_rpd',             'INTEGER']
 ];
@@ -118,6 +125,25 @@ try {
               WHERE llm_providers_enabled IS NOT NULL
               AND llm_providers_enabled != ''
               AND llm_providers_enabled NOT LIKE '%deepseek%'`).run();
+} catch {}
+
+// Rewrite legacy 'local' provider tokens to 'nvidia' in existing rows, and copy
+// any per-user RPM/RPD overrides that were stored against 'local' into the new
+// nvidia_* columns (only when nvidia_* is still NULL — never clobber a value
+// the user has already set against the new provider).
+try {
+  db.prepare(`UPDATE account_config
+              SET llm_provider_order = REPLACE(llm_provider_order, 'local', 'nvidia')
+              WHERE llm_provider_order LIKE '%local%'`).run();
+  db.prepare(`UPDATE account_config
+              SET llm_providers_enabled = REPLACE(llm_providers_enabled, 'local', 'nvidia')
+              WHERE llm_providers_enabled LIKE '%local%'`).run();
+  db.prepare(`UPDATE account_config
+              SET nvidia_rpm = local_rpm
+              WHERE nvidia_rpm IS NULL AND local_rpm IS NOT NULL`).run();
+  db.prepare(`UPDATE account_config
+              SET nvidia_rpd = local_rpd
+              WHERE nvidia_rpd IS NULL AND local_rpd IS NOT NULL`).run();
 } catch {}
 
 db.exec(`

@@ -1,4 +1,4 @@
-const localProvider    = require('./providers/local');
+const nvidiaProvider   = require('./providers/nvidia');
 const groqProvider     = require('./providers/groq');
 const geminiProvider   = require('./providers/gemini');
 const deepseekProvider = require('./providers/deepseek');
@@ -9,7 +9,7 @@ function log(rec) {
   process.stderr.write(JSON.stringify({ ts: new Date().toISOString(), ...rec }) + '\n');
 }
 
-const PROVIDERS = [localProvider, groqProvider, geminiProvider, deepseekProvider];
+const PROVIDERS = [nvidiaProvider, groqProvider, geminiProvider, deepseekProvider];
 
 // Current router instance; swapped atomically by reload().
 let current = createRouter({

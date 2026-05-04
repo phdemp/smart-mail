@@ -4,7 +4,6 @@ const { db, getConfig, saveConfig, getStats } = require('../db');
 const { queueClassification, classifyEmail, generateDraft } = require('../classifier');
 const { sendEmail, testSmtp } = require('../smtp');
 const { testImap, getSyncMode, startSyncForUser, stopSyncForUser, flagAsDeleted, expungeDeleted } = require('../imap');
-const LOCAL_API = 'http://localhost:8765';
 
 // ─── Public endpoints (no auth required) ────────────────────────────────────
 router.get('/api/users/any', (req, res) => {
@@ -152,34 +151,24 @@ router.get('/api/account/test-smtp', async (req, res) => {
 
 router.get('/api/account/test', async (req, res) => {
   const cfg = buildCfg(req.query);
-  const results = { imap: null, smtp: null, ai: null };
+  const results = { imap: null, smtp: null };
 
   try { results.imap = await testImap(cfg); } catch(e) { results.imap = { ok: false, error: e.message }; }
   try { results.smtp = await testSmtp(cfg); } catch(e) { results.smtp = { ok: false, error: e.message }; }
-
-  // Test local AI classifier
-  try {
-    const r = await fetch(`${LOCAL_API}/classify`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ subject: 'ping', from_address: 'test@test.com', preview: 'test' })
-    });
-    results.ai = r.ok ? { ok: true, model: (await r.json()).model } : { ok: false, error: `HTTP ${r.status}` };
-  } catch(e) { results.ai = { ok: false, error: e.message }; }
 
   res.json(results);
 });
 
 router.post('/api/providers/:name/test', async (req, res) => {
   const { name } = req.params;
-  const allowed = new Set(['local', 'groq', 'gemini', 'deepseek']);
+  const allowed = new Set(['nvidia', 'groq', 'gemini', 'deepseek']);
   if (!allowed.has(name)) return res.status(400).json({ ok: false, error: 'Unknown provider' });
 
   const { resolveConfig } = require('../llm/config');
   // Scoped to the logged-in user — reads THEIR saved keys, not "first row".
   const cfg = resolveConfig(req.user.id);
   const providers = {
-    local:    require('../llm/providers/local'),
+    nvidia:   require('../llm/providers/nvidia'),
     groq:     require('../llm/providers/groq'),
     gemini:   require('../llm/providers/gemini'),
     deepseek: require('../llm/providers/deepseek')
@@ -1011,7 +1000,7 @@ router.post('/api/emails/:id/draft/regen', async (req, res) => {
     const routed = await llm.router.classify(email, { mode: 'regen', tone, userId: req.user.id });
     if (routed && routed.draft_reply) {
       draftReply = routed.draft_reply;
-      source = routed._provider;    // for the UI toast: 'groq' / 'gemini' / 'local'
+      source = routed._provider;    // for the UI toast: 'nvidia' / 'groq' / 'gemini' / 'deepseek'
       dbSource = 'llm';             // for the drafts.source column
     } else {
       draftReply = buildTemplateReply(cls || { category: 'other' }, tone);
@@ -1073,7 +1062,7 @@ router.get('/api/emails/:id/ical', (req, res) => {
 
 router.get('/api/settings', (req, res) => {
   const cfg = getConfig(req.user.id) || {};
-  const localProv    = require('../llm/providers/local');
+  const nvidiaProv   = require('../llm/providers/nvidia');
   const groqProv     = require('../llm/providers/groq');
   const geminiProv   = require('../llm/providers/gemini');
   const deepseekProv = require('../llm/providers/deepseek');
@@ -1084,20 +1073,23 @@ router.get('/api/settings', (req, res) => {
   const out = {
     ...cfg,
     password:         undefined,
+    nvidia_api_key:   '',
     groq_api_key:     '',
     gemini_api_key:   '',
     deepseek_api_key: '',
     has_password:     !!cfg.password,
+    has_nvidia_key:   !!cfg.nvidia_api_key,
     has_groq_key:     !!cfg.groq_api_key,
     has_gemini_key:   !!cfg.gemini_api_key,
     has_deepseek_key: !!cfg.deepseek_api_key,
+    nvidia_model:           cfg.nvidia_model   || 'meta/llama-3.3-70b-instruct',
     groq_model:             cfg.groq_model     || 'llama-3.3-70b-versatile',
     gemini_model:           cfg.gemini_model   || 'gemini-flash-latest',
     deepseek_model:         cfg.deepseek_model || 'deepseek-chat',
-    llm_provider_order:     cfg.llm_provider_order    || 'local,groq,gemini,deepseek',
-    llm_providers_enabled:  cfg.llm_providers_enabled || 'local,groq,gemini,deepseek',
+    llm_provider_order:     cfg.llm_provider_order    || 'nvidia,groq,gemini,deepseek',
+    llm_providers_enabled:  cfg.llm_providers_enabled || 'nvidia,groq,gemini,deepseek',
     limits_defaults: {
-      local:    { rpm: localProv.limits.rpm,    rpd: Number.isFinite(localProv.limits.rpd)    ? localProv.limits.rpd    : null },
+      nvidia:   { rpm: nvidiaProv.limits.rpm,   rpd: Number.isFinite(nvidiaProv.limits.rpd)   ? nvidiaProv.limits.rpd   : null },
       groq:     { rpm: groqProv.limits.rpm,     rpd: Number.isFinite(groqProv.limits.rpd)     ? groqProv.limits.rpd     : null },
       gemini:   { rpm: geminiProv.limits.rpm,   rpd: Number.isFinite(geminiProv.limits.rpd)   ? geminiProv.limits.rpd   : null },
       deepseek: { rpm: deepseekProv.limits.rpm, rpd: Number.isFinite(deepseekProv.limits.rpd) ? deepseekProv.limits.rpd : null }
@@ -1137,15 +1129,17 @@ router.post('/api/settings/save', async (req, res) => {
     const providerUpdates = {};
     // Only overwrite saved API keys if the client actually sent a non-empty value.
     // Empty string from a blank password field means "keep existing", not "clear it".
+    if (body.nvidia_api_key)   providerUpdates.nvidia_api_key   = body.nvidia_api_key;
     if (body.groq_api_key)     providerUpdates.groq_api_key     = body.groq_api_key;
     if (body.gemini_api_key)   providerUpdates.gemini_api_key   = body.gemini_api_key;
     if (body.deepseek_api_key) providerUpdates.deepseek_api_key = body.deepseek_api_key;
+    if (body.nvidia_model)          providerUpdates.nvidia_model   = body.nvidia_model;
     if (body.groq_model)            providerUpdates.groq_model     = body.groq_model;
     if (body.gemini_model)          providerUpdates.gemini_model   = body.gemini_model;
     if (body.deepseek_model)        providerUpdates.deepseek_model = body.deepseek_model;
     if (body.llm_provider_order)    providerUpdates.order        = body.llm_provider_order;
     if (body.llm_providers_enabled) providerUpdates.enabled      = body.llm_providers_enabled;
-    for (const [p, col] of [['groq','groq'],['gemini','gemini'],['deepseek','deepseek'],['local','local']]) {
+    for (const col of ['nvidia', 'groq', 'gemini', 'deepseek']) {
       if (body[col + '_rpm'] !== undefined) providerUpdates[col + '_rpm'] = body[col + '_rpm'];
       if (body[col + '_rpd'] !== undefined) providerUpdates[col + '_rpd'] = body[col + '_rpd'];
     }
@@ -1162,11 +1156,11 @@ router.post('/api/settings/save', async (req, res) => {
 router.get('/api/providers/usage', (req, res) => {
   const { todaySummary } = require('../llm/usage');
   const { resolveConfig } = require('../llm/config');
-  const localProv    = require('../llm/providers/local');
+  const nvidiaProv   = require('../llm/providers/nvidia');
   const groqProv     = require('../llm/providers/groq');
   const geminiProv   = require('../llm/providers/gemini');
   const deepseekProv = require('../llm/providers/deepseek');
-  const defs = { local: localProv, groq: groqProv, gemini: geminiProv, deepseek: deepseekProv };
+  const defs = { nvidia: nvidiaProv, groq: groqProv, gemini: geminiProv, deepseek: deepseekProv };
 
   const counts = todaySummary(req.user.id);          // { provider: count }
   const cfg = resolveConfig(req.user.id);
@@ -1193,6 +1187,7 @@ router.get('/api/providers/usage', (req, res) => {
 // ─── LLM key status + fallback reclassify ───────────────────────────────────
 router.get('/api/llm/status', (req, res) => {
   const cfg = getConfig(req.user.id) || {};
+  const hasNvidia = !!(process.env.NVIDIA_API_KEY || cfg.nvidia_api_key);
   const hasGroq = !!(process.env.GROQ_API_KEY || cfg.groq_api_key);
   const hasGemini = !!(process.env.GEMINI_API_KEY || cfg.gemini_api_key);
   const hasDeepseek = !!(process.env.DEEPSEEK_API_KEY || cfg.deepseek_api_key);
@@ -1211,11 +1206,11 @@ router.get('/api/llm/status', (req, res) => {
   const health = llm.router.getProviderHealth(req.user.id) || {};
 
   // Is at least one provider plausibly usable right now?
-  const hasKey = { local: false, groq: hasGroq, gemini: hasGemini, deepseek: hasDeepseek };
-  const enabledList = ((cfg.llm_providers_enabled || 'local,groq,gemini,deepseek').split(',')).map(s => s.trim());
+  const hasKey = { nvidia: hasNvidia, groq: hasGroq, gemini: hasGemini, deepseek: hasDeepseek };
+  const enabledList = ((cfg.llm_providers_enabled || 'nvidia,groq,gemini,deepseek').split(',')).map(s => s.trim());
   const isUsable = (name) => {
     if (!enabledList.includes(name)) return false;
-    if (name !== 'local' && !hasKey[name]) return false;
+    if (!hasKey[name]) return false;
     const h = health[name] || {};
     if (h.status === 'invalid_key' || h.status === 'breaker_open') return false;
     if (h.status === 'rate_limited') {
@@ -1228,10 +1223,11 @@ router.get('/api/llm/status', (req, res) => {
     }
     return true;
   };
-  const anyUsable = ['local', 'groq', 'gemini', 'deepseek'].some(isUsable);
+  const anyUsable = ['nvidia', 'groq', 'gemini', 'deepseek'].some(isUsable);
 
   res.json({
-    has_cloud_keys: hasGroq || hasGemini || hasDeepseek,
+    has_cloud_keys: hasNvidia || hasGroq || hasGemini || hasDeepseek,
+    has_nvidia: hasNvidia,
     has_groq: hasGroq,
     has_gemini: hasGemini,
     has_deepseek: hasDeepseek,
@@ -1245,6 +1241,7 @@ router.get('/api/llm/status', (req, res) => {
 router.post('/api/classifications/reclassify-fallback', (req, res) => {
   const cfg = getConfig(req.user.id) || {};
   const hasCloud = !!(
+    process.env.NVIDIA_API_KEY || cfg.nvidia_api_key ||
     process.env.GROQ_API_KEY || cfg.groq_api_key ||
     process.env.GEMINI_API_KEY || cfg.gemini_api_key ||
     process.env.DEEPSEEK_API_KEY || cfg.deepseek_api_key
