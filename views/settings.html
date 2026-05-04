@@ -44,6 +44,27 @@
   <!-- Toast -->
   <div id="toast-container"></div>
 
+  <!-- Tab nav -->
+  <div style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:24px;">
+    <button @click="setTab('account')" type="button"
+            :style="(activeTab === 'account'
+              ? 'border-bottom:2px solid var(--accent-cyan);color:var(--text-primary);font-weight:600;'
+              : 'border-bottom:2px solid transparent;color:var(--text-muted);font-weight:500;')
+              + 'padding:10px 16px;background:none;border-top:none;border-left:none;border-right:none;font-size:13px;cursor:pointer;margin-bottom:-1px;'">
+      📧 Email Account
+    </button>
+    <button @click="setTab('providers')" type="button"
+            :style="(activeTab === 'providers'
+              ? 'border-bottom:2px solid var(--accent-cyan);color:var(--text-primary);font-weight:600;'
+              : 'border-bottom:2px solid transparent;color:var(--text-muted);font-weight:500;')
+              + 'padding:10px 16px;background:none;border-top:none;border-left:none;border-right:none;font-size:13px;cursor:pointer;margin-bottom:-1px;'">
+      🧠 AI Providers
+    </button>
+  </div>
+
+  <!-- ── Email Account tab ───────────────────────────────────────────── -->
+  <div x-show="activeTab === 'account'">
+
   <!-- 1. Account Section -->
   <div class="settings-section">
     <h3>👤 Account</h3>
@@ -128,6 +149,11 @@
          :style="testResults.smtp?.ok ? 'color:var(--accent-green)' : 'color:var(--accent-red)'"
          x-text="testResults.smtp?.ok ? '✅ SMTP Ready' : '❌ ' + testResults.smtp?.error"></div>
   </div>
+
+  </div><!-- /Email Account tab (part 1) -->
+
+  <!-- ── AI Providers tab ────────────────────────────────────────────── -->
+  <div x-show="activeTab === 'providers'">
 
   <!-- 5. AI Providers -->
   <div class="settings-section">
@@ -256,6 +282,11 @@
     </button>
   </div>
 
+  </div><!-- /AI Providers tab -->
+
+  <!-- ── Email Account tab (continued) ───────────────────────────────── -->
+  <div x-show="activeTab === 'account'">
+
   <!-- 4. Sync Settings -->
   <div class="settings-section">
     <h3>⟳ Sync Settings</h3>
@@ -346,6 +377,8 @@
     </button>
   </div>
 
+  </div><!-- /Email Account tab (part 2) -->
+
 </div>
 
 <script>
@@ -356,6 +389,11 @@ function settingsApp() {
       imap_host:'', imap_port:993, imap_tls:true,
       smtp_host:'', smtp_port:587, smtp_tls:false,
       sync_interval:60
+    },
+    activeTab: localStorage.getItem('im_settings_tab') || 'account',
+    setTab(name) {
+      this.activeTab = name;
+      localStorage.setItem('im_settings_tab', name);
     },
     showPassword: false,
     saving: false,
