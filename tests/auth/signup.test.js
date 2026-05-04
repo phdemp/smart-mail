@@ -98,3 +98,38 @@ test('signup with failing IMAP returns 400 and writes nothing', async () => {
   const after = db.prepare('SELECT COUNT(*) as n FROM users').get().n;
   assert.equal(after, before);
 });
+
+test('signup row contains nvidia in llm_provider_order/enabled (regression: column DEFAULT was locked at the legacy local,...)', async () => {
+  imapShouldSucceed = true;
+  await request('POST', '/api/auth/signup', {
+    email: 'dave@test.com', password: 'pw',
+    imap_host: 'imap.example.com', imap_port: 993, imap_tls: 1,
+    smtp_host: 'smtp.example.com', smtp_port: 465, smtp_tls: 1,
+    display_name: 'Dave', sync_interval: 60
+  });
+  const u = db.prepare('SELECT id FROM users WHERE email = ?').get('dave@test.com');
+  const cfg = db.prepare('SELECT llm_provider_order, llm_providers_enabled FROM account_config WHERE user_id = ?').get(u.id);
+  assert.equal(cfg.llm_provider_order,    'nvidia,groq,gemini,deepseek');
+  assert.equal(cfg.llm_providers_enabled, 'nvidia,groq,gemini,deepseek');
+});
+
+test('login normalizes Gmail app password whitespace before comparing', async () => {
+  imapShouldSucceed = true;
+  // Sign up with Google's spaced display format. Server stores the cleaned value.
+  await request('POST', '/api/auth/signup', {
+    email: 'eve@gmail.com', password: 'abcd efgh ijkl mnop',
+    imap_host: 'imap.gmail.com', imap_port: 993, imap_tls: 1,
+    smtp_host: 'smtp.gmail.com', smtp_port: 465, smtp_tls: 1,
+    display_name: 'Eve', sync_interval: 60
+  });
+  // Login with the SAME spaced format the user copy-pasted from Google's UI.
+  const res = await request('POST', '/api/auth/login', {
+    email: 'eve@gmail.com',
+    password: 'abcd efgh ijkl mnop'
+  });
+  assert.equal(res.status, 200, 'login should succeed even with spaces');
+  assert.ok(res.body.token);
+  // And the stored value is the clean one (no spaces).
+  const stored = db.prepare(`SELECT password FROM account_config WHERE email = ?`).get('eve@gmail.com');
+  assert.equal(stored.password, 'abcdefghijklmnop');
+});
