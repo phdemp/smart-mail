@@ -518,7 +518,7 @@ function settingsApp() {
           this.reclassifyTotal = data.queued;
           this._pollReclassifyProgress();
         } else if (data.error === 'no_llm_configured') {
-          showToast('error', '❌ Configure a Groq or Gemini key first');
+          showToast('error', '❌ Configure an NVIDIA, Groq, Gemini, or DeepSeek key first');
           this.reclassifying = false;
         } else {
           showToast('error', '❌ ' + (data.error || 'Reclassify failed'));
