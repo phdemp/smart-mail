@@ -42,22 +42,23 @@ router.post('/api/auth/signup', async (req, res) => {
   const info = db.prepare('INSERT INTO users (email) VALUES (?)').run(cfg.email);
   const userId = info.lastInsertRowid;
 
-  // Explicit provider order/enabled — DON'T rely on the column DEFAULT.
-  // SQLite locks the default at the value supplied when the column was first
-  // added (originally 'local,groq,gemini,deepseek'). Updating it in db.js's
-  // PROVIDER_COLS list is a silent no-op for existing columns, so new rows
-  // would otherwise inherit the legacy 'local,...' default and the NVIDIA
-  // row would be filtered out of the Settings UI.
+  // Explicit provider order/enabled + nvidia_model — DON'T rely on the
+  // column DEFAULTs. SQLite locks each column's default at the value
+  // supplied when it was first added; updating PROVIDER_COLS in db.js
+  // afterwards is a silent no-op for existing columns. Specifying values
+  // here keeps fresh signups consistent with the live defaults
+  // (nvidia listed first; qwen as the NVIDIA model).
   const PROVIDER_ORDER_DEFAULT = 'nvidia,groq,gemini,deepseek';
+  const NVIDIA_MODEL_DEFAULT   = 'qwen/qwen3.5-122b-a10b';
   db.prepare(`
     INSERT INTO account_config (
       user_id, display_name, email, imap_host, imap_port, imap_tls,
       smtp_host, smtp_port, smtp_tls, username, password, sync_interval,
-      llm_provider_order, llm_providers_enabled
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      llm_provider_order, llm_providers_enabled, nvidia_model
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `).run(userId, cfg.display_name, cfg.email, cfg.imap_host, cfg.imap_port, cfg.imap_tls,
          cfg.smtp_host, cfg.smtp_port, cfg.smtp_tls, cfg.username, cfg.password, cfg.sync_interval,
-         PROVIDER_ORDER_DEFAULT, PROVIDER_ORDER_DEFAULT);
+         PROVIDER_ORDER_DEFAULT, PROVIDER_ORDER_DEFAULT, NVIDIA_MODEL_DEFAULT);
 
   // Kick off IMAP sync in the background — the caller gets their token right away.
   try {

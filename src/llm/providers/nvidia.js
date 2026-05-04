@@ -19,7 +19,7 @@ async function call(email, opts, cfg) {
         'Authorization': `Bearer ${cfg.apiKey}`
       },
       body: JSON.stringify({
-        model: cfg.model || 'meta/llama-3.3-70b-instruct',
+        model: cfg.model || 'qwen/qwen3.5-122b-a10b',
         temperature: 0.1,
         response_format: { type: 'json_object' },
         messages: [
@@ -65,7 +65,7 @@ function parseIntOr(v) { const n = parseInt(v, 10); return Number.isFinite(n) ? 
 
 module.exports = {
   name: 'nvidia',
-  defaultModel: 'meta/llama-3.3-70b-instruct',
+  defaultModel: 'qwen/qwen3.5-122b-a10b',
   limits: { rpm: 40, rpd: 1000 },
   call
 };

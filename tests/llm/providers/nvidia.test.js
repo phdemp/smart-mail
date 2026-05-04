@@ -64,5 +64,5 @@ test('nvidia provider metadata', () => {
   assert.equal(nvidia.name, 'nvidia');
   assert.ok(nvidia.limits.rpm > 0);
   assert.ok(nvidia.limits.rpd > 0);
-  assert.equal(nvidia.defaultModel, 'meta/llama-3.3-70b-instruct');
+  assert.equal(nvidia.defaultModel, 'qwen/qwen3.5-122b-a10b');
 });

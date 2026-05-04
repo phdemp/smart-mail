@@ -1089,7 +1089,7 @@ router.get('/api/settings', (req, res) => {
     has_groq_key:     !!cfg.groq_api_key,
     has_gemini_key:   !!cfg.gemini_api_key,
     has_deepseek_key: !!cfg.deepseek_api_key,
-    nvidia_model:           cfg.nvidia_model   || 'meta/llama-3.3-70b-instruct',
+    nvidia_model:           cfg.nvidia_model   || 'qwen/qwen3.5-122b-a10b',
     groq_model:             cfg.groq_model     || 'llama-3.3-70b-versatile',
     gemini_model:           cfg.gemini_model   || 'gemini-flash-latest',
     deepseek_model:         cfg.deepseek_model || 'deepseek-chat',

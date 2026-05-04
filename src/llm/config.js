@@ -39,7 +39,7 @@ function resolveConfig(userId) {
     deepseek: row.deepseek_api_key || envOr('DEEPSEEK_API_KEY')
   };
   const models = {
-    nvidia:   row.nvidia_model   || 'meta/llama-3.3-70b-instruct',
+    nvidia:   row.nvidia_model   || 'qwen/qwen3.5-122b-a10b',
     groq:     row.groq_model     || 'llama-3.3-70b-versatile',
     gemini:   row.gemini_model   || 'gemini-flash-latest',
     deepseek: row.deepseek_model || 'deepseek-chat'

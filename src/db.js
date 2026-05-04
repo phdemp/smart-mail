@@ -91,7 +91,7 @@ const PROVIDER_COLS = [
   ['groq_api_key',          'TEXT'],
   ['gemini_api_key',        'TEXT'],
   ['deepseek_api_key',      'TEXT'],
-  ['nvidia_model',          "TEXT DEFAULT 'meta/llama-3.3-70b-instruct'"],
+  ['nvidia_model',          "TEXT DEFAULT 'qwen/qwen3.5-122b-a10b'"],
   ['groq_model',            "TEXT DEFAULT 'llama-3.3-70b-versatile'"],
   ['gemini_model',          "TEXT DEFAULT 'gemini-flash-latest'"],
   ['deepseek_model',        "TEXT DEFAULT 'deepseek-chat'"],
@@ -144,6 +144,16 @@ try {
   db.prepare(`UPDATE account_config
               SET nvidia_rpd = local_rpd
               WHERE nvidia_rpd IS NULL AND local_rpd IS NOT NULL`).run();
+} catch {}
+
+// Roll forward the nvidia_model default. SQLite locked the column DEFAULT
+// at 'meta/llama-3.3-70b-instruct' when the column was first added; only
+// rows still on that locked default are rewritten — users who actively
+// chose meta/... or any other model are left alone.
+try {
+  db.prepare(`UPDATE account_config
+              SET nvidia_model = 'qwen/qwen3.5-122b-a10b'
+              WHERE nvidia_model = 'meta/llama-3.3-70b-instruct'`).run();
 } catch {}
 
 db.exec(`

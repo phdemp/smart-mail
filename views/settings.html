@@ -163,8 +163,10 @@
     </p>
 
     <!-- Trial-keys banner. Shown only when the server has any default key
-         configured. Active state: green/amber, advisory. Expired state: red. -->
-    <template x-if="defaultKeys && defaultKeys.any_default_configured && defaultKeys.active">
+         configured AND the user hasn't saved any of their own keys yet.
+         Once they save even one of their own keys, the trial messaging
+         disappears since they no longer depend on it. -->
+    <template x-if="defaultKeys && defaultKeys.any_default_configured && defaultKeys.active && !hasAnyOwnKey">
       <div style="margin:0 0 14px;padding:12px 14px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.4);border-radius:6px;font-size:12px;color:var(--text-primary);line-height:1.55;">
         <div style="font-weight:600;margin-bottom:4px;">⏱ Free trial — default API keys active for today only</div>
         <div style="color:var(--text-muted);">
@@ -174,7 +176,7 @@
         </div>
       </div>
     </template>
-    <template x-if="defaultKeys && defaultKeys.any_default_configured && !defaultKeys.active">
+    <template x-if="defaultKeys && defaultKeys.any_default_configured && !defaultKeys.active && !hasAnyOwnKey">
       <div style="margin:0 0 14px;padding:12px 14px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.4);border-radius:6px;font-size:12px;color:var(--text-primary);line-height:1.55;">
         <div style="font-weight:600;margin-bottom:4px;color:var(--accent-red);">⚠ Default API keys have expired</div>
         <div style="color:var(--text-muted);">
@@ -429,13 +431,20 @@ function settingsApp() {
         if (r.ok) this.defaultKeys = await r.json();
       } catch {}
     },
+    // True once the user has at least one of their own provider keys saved.
+    // Source of truth is each provider's hasKey flag, populated from the
+    // server's has_<provider>_key presence flags in loadProviders(). The
+    // trial / expired banners hide once this is true.
+    get hasAnyOwnKey() {
+      return Array.isArray(this.providerList) && this.providerList.some(p => p.hasKey);
+    },
     showPassword: false,
     saving: false,
     confirmReset: false,
     testing: { imap: false, smtp: false },
     testResults: { imap: null, smtp: null },
     providerList: [
-      { name: 'nvidia',   label: 'NVIDIA',           enabled: true, apiKey: '', hasKey: false, showKey: false, model: 'meta/llama-3.3-70b-instruct', rpm: '', rpd: '', defaultRpm: null, defaultRpd: null, testing: false },
+      { name: 'nvidia',   label: 'NVIDIA',           enabled: true, apiKey: '', hasKey: false, showKey: false, model: 'qwen/qwen3.5-122b-a10b',     rpm: '', rpd: '', defaultRpm: null, defaultRpd: null, testing: false },
       { name: 'groq',     label: 'Groq',             enabled: true, apiKey: '', hasKey: false, showKey: false, model: 'llama-3.3-70b-versatile',     rpm: '', rpd: '', defaultRpm: null, defaultRpd: null, testing: false },
       { name: 'gemini',   label: 'Gemini Flash',     enabled: true, apiKey: '', hasKey: false, showKey: false, model: 'gemini-flash-latest',         rpm: '', rpd: '', defaultRpm: null, defaultRpd: null, testing: false },
       { name: 'deepseek', label: 'DeepSeek',         enabled: true, apiKey: '', hasKey: false, showKey: false, model: 'deepseek-chat',               rpm: '', rpd: '', defaultRpm: null, defaultRpd: null, testing: false }
