@@ -4,6 +4,7 @@ const cron = require('node-cron');
 const crypto = require('crypto');
 const { db, getConfig } = require('./db');
 const { queueClassification } = require('./classifier');
+const { mapAuthError } = require('./util/credentials');
 
 let broadcast = () => {};
 function setBroadcast(fn) { broadcast = fn; }
@@ -314,7 +315,12 @@ async function testImap(cfg) {
     await client.logout();
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: e.message };
+    // imapflow's e.message is often a generic "Command failed" — the actual
+    // server reply (e.g. "Invalid credentials (Failure)" / "Application-
+    // specific password required") lives on e.responseText. Prefer that, then
+    // map known patterns to a friendlier hint.
+    const raw = e.responseText || e.authMessage || e.message || 'IMAP connection failed';
+    return { ok: false, error: mapAuthError(cfg.imap_host, raw) };
   }
 }
 

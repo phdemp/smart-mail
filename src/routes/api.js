@@ -4,6 +4,7 @@ const { db, getConfig, saveConfig, getStats } = require('../db');
 const { queueClassification, classifyEmail, generateDraft } = require('../classifier');
 const { sendEmail, testSmtp } = require('../smtp');
 const { testImap, getSyncMode, startSyncForUser, stopSyncForUser, flagAsDeleted, expungeDeleted } = require('../imap');
+const { normalizePassword } = require('../util/credentials');
 
 // ─── Public endpoints (no auth required) ────────────────────────────────────
 router.get('/api/users/any', (req, res) => {
@@ -113,12 +114,18 @@ router.post('/api/account/save', async (req, res) => {
 });
 
 function buildCfg(q) {
+  // Strip whitespace from the password server-side. For Gmail hosts we strip
+  // ALL internal whitespace too (matches Google's actual app-password format —
+  // users paste the spaced "abcd efgh ijkl mnop" version Google displays).
+  // Use the IMAP host as the basis for "is this gmail" since it's the host
+  // we'll authenticate against first.
+  const password = normalizePassword(q.imap_host || q.smtp_host, q.password);
   return {
     imap_host: q.imap_host, imap_port: parseInt(q.imap_port) || 993,
     imap_tls: q.imap_tls === '1' ? 1 : 0,
     smtp_host: q.smtp_host, smtp_port: parseInt(q.smtp_port) || 587,
     smtp_tls: q.smtp_tls === '1' ? 1 : 0,
-    username: q.username || q.email, password: q.password,
+    username: q.username || q.email, password,
     display_name: 'Test', email: q.email
   };
 }

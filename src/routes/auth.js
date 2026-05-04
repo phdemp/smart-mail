@@ -4,6 +4,7 @@ const { db } = require('../db');
 const { signToken } = require('../auth');
 const { testImap } = require('../imap');
 const { requireAuth } = require('../middleware/auth');
+const { normalizePassword, mapAuthError } = require('../util/credentials');
 
 router.post('/api/auth/signup', async (req, res) => {
   const b = req.body || {};
@@ -24,7 +25,9 @@ router.post('/api/auth/signup', async (req, res) => {
     smtp_port: parseInt(b.smtp_port, 10) || 465,
     smtp_tls: (b.smtp_tls === true || b.smtp_tls === 1 || b.smtp_tls === '1' || b.smtp_tls === 'on') ? 1 : 0,
     username: b.username || b.email,
-    password: b.password,
+    // Normalize password server-side. Always trim edges; for Gmail hosts strip
+    // all internal whitespace (Google displays app passwords with spaces).
+    password: normalizePassword(b.imap_host, b.password),
     sync_interval: parseInt(b.sync_interval, 10) || 60
   };
 
@@ -32,7 +35,8 @@ router.post('/api/auth/signup', async (req, res) => {
   try { imapResult = await testImap(cfg); }
   catch (e) { imapResult = { ok: false, error: e.message }; }
   if (!imapResult || !imapResult.ok) {
-    return res.status(400).json({ error: 'imap_failed', detail: imapResult && imapResult.error || 'IMAP test failed' });
+    const detail = mapAuthError(cfg.imap_host, imapResult && imapResult.error) || 'IMAP test failed';
+    return res.status(400).json({ error: 'imap_failed', detail });
   }
 
   const info = db.prepare('INSERT INTO users (email) VALUES (?)').run(cfg.email);
