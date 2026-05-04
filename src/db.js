@@ -211,6 +211,8 @@ CREATE INDEX IF NOT EXISTS idx_emails_user          ON emails(user_id);
 CREATE INDEX IF NOT EXISTS idx_classifications_user ON classifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_drafts_user          ON drafts(user_id);
 CREATE INDEX IF NOT EXISTS idx_sync_log_user        ON sync_log(user_id);
+-- Powers the classification-scope check (latest 100 within last 10 days per user).
+CREATE INDEX IF NOT EXISTS idx_emails_user_received ON emails(user_id, received_at DESC);
 `);
 
 // provider_usage needs its PK rebuilt to include user_id. SQLite can't ALTER PK,

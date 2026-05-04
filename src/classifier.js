@@ -120,6 +120,31 @@ function fallbackClassification() {
   };
 }
 
+// ─── Classification scope ────────────────────────────────────────────────────
+//
+// To bound LLM cost, only the smaller of {latest 100 emails, last 10 days} per
+// user is eligible for classification. Out-of-scope emails store no row and
+// surface in the UI as "uncategorized". The pending-count query in
+// /api/llm/status applies the same predicate so the dashboard pill stays
+// consistent.
+const SCOPE_DAYS = 10;
+const SCOPE_LIMIT = 100;
+
+function isInClassificationScope(userId, emailId) {
+  const row = db.prepare(`
+    SELECT 1 FROM emails e
+    WHERE e.id = ? AND e.user_id = ?
+      AND e.received_at >= datetime('now', '-${SCOPE_DAYS} days')
+      AND e.id IN (
+        SELECT id FROM emails
+        WHERE user_id = ?
+        ORDER BY received_at DESC
+        LIMIT ${SCOPE_LIMIT}
+      )
+  `).get(emailId, userId, userId);
+  return !!row;
+}
+
 // ─── Core classification ──────────────────────────────────────────────────────
 
 async function classifyEmail(userId, emailId) {
@@ -128,6 +153,10 @@ async function classifyEmail(userId, emailId) {
 
   const existing = db.prepare('SELECT id FROM classifications WHERE email_id = ? AND user_id = ?').get(emailId, userId);
   if (existing) return;
+
+  // Scope gate: skip emails outside the classification window. No row written —
+  // pending-count query mirrors this predicate so they don't appear "stuck".
+  if (!isInClassificationScope(userId, emailId)) return;
 
   // Tier 1: instant rules
   const rulesCategory = rulesClassify(email);
@@ -144,7 +173,7 @@ async function classifyEmail(userId, emailId) {
     return;
   }
 
-  // Tier 2: provider cascade (local → groq → gemini → ...)
+  // Tier 2: provider cascade (nvidia → groq → gemini → deepseek)
   try {
     const routed = await llm.router.classify(email, { mode: 'full', userId });
     if (routed) {
@@ -247,5 +276,8 @@ module.exports = {
   classifyAllUnclassifiedForUser,
   classifyEmail,
   generateDraft,
-  setBroadcast
+  setBroadcast,
+  isInClassificationScope,
+  SCOPE_DAYS,
+  SCOPE_LIMIT
 };

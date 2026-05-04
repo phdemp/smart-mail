@@ -1194,12 +1194,23 @@ router.get('/api/llm/status', (req, res) => {
   const fallbackCount = db.prepare(
     "SELECT COUNT(*) as n FROM classifications WHERE user_id = ? AND source = 'fallback'"
   ).get(req.user.id).n;
+  // Pending count mirrors the classification scope (see classifier.js):
+  // only emails in the latest SCOPE_LIMIT received within the last
+  // SCOPE_DAYS days are eligible — older / overflow emails are skipped
+  // by classifyEmail and must NOT show as forever-pending.
+  const { SCOPE_DAYS, SCOPE_LIMIT } = require('../classifier');
   const pendingCount = db.prepare(`
     SELECT COUNT(*) as n FROM emails e
-    WHERE e.user_id = ? AND NOT EXISTS (
-      SELECT 1 FROM classifications c WHERE c.email_id = e.id AND c.user_id = e.user_id
-    )
-  `).get(req.user.id).n;
+    WHERE e.user_id = ?
+      AND e.received_at >= datetime('now', '-${SCOPE_DAYS} days')
+      AND e.id IN (
+        SELECT id FROM emails WHERE user_id = ?
+        ORDER BY received_at DESC LIMIT ${SCOPE_LIMIT}
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM classifications c WHERE c.email_id = e.id AND c.user_id = e.user_id
+      )
+  `).get(req.user.id, req.user.id).n;
 
   // Per-provider live health (from router in-memory state).
   const llm = require('../llm');
