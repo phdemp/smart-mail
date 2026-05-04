@@ -1332,17 +1332,30 @@ router.get('/api/sidebar', (req, res) => {
   const cfg = getConfig(req.user.id);
   const isDemo = !cfg;
 
+  // tip = native browser tooltip on hover. Helps users understand why a
+  // given email landed in this bucket, especially for ambiguous categories
+  // like FYI ('why is this here?').
   const folders = [
-    { cat: 'urgent', icon: '🔴', label: 'Urgent Attention', color: 'var(--accent-red)', count: stats.urgent },
-    { cat: 'meeting_request', icon: '📅', label: 'Meeting Requests', color: 'var(--accent-blue)', count: stats.meeting_request },
-    { cat: 'financial', icon: '💳', label: 'Financial', color: 'var(--accent-green)', count: stats.financial },
-    { cat: 'legal', icon: '⚖️', label: 'Legal', color: 'var(--accent-red)', count: stats.legal },
-    { cat: 'travel', icon: '✈️', label: 'Travel & Hotels', color: 'var(--accent-purple)', count: stats.travel },
-    { cat: 'pitch_deck', icon: '🚀', label: 'Pitch Decks', color: 'var(--accent-orange)', count: stats.pitch_deck },
-    { cat: 'rewards_awards', icon: '🏆', label: 'Rewards & Awards', color: 'var(--accent-gold)', count: stats.rewards_awards },
-    { cat: 'fyi', icon: 'ℹ️', label: 'For Your Info', color: 'var(--accent-gray)', count: stats.fyi },
-    { cat: 'other', icon: '📂', label: 'All Other', color: 'var(--accent-slate)', count: stats.other },
-    { cat: 'trash', icon: '🗑️', label: 'Trash', color: 'var(--text-muted)', count: stats.trash }
+    { cat: 'urgent',          icon: '🔴', label: 'Urgent Attention',  color: 'var(--accent-red)',    count: stats.urgent,
+      tip: 'Emails marked urgent or time-sensitive (deadlines, ASAP, action required, legal matters).' },
+    { cat: 'meeting_request', icon: '📅', label: 'Meeting Requests',  color: 'var(--accent-blue)',   count: stats.meeting_request,
+      tip: 'Calendar invites, Zoom / Google Meet / Teams / Webex links, 1:1 / catch-up requests.' },
+    { cat: 'financial',       icon: '💳', label: 'Financial',         color: 'var(--accent-green)',  count: stats.financial,
+      tip: 'Statements, invoices, payment / EMI reminders, transaction alerts, bank notifications.' },
+    { cat: 'legal',           icon: '⚖️', label: 'Legal',              color: 'var(--accent-red)',    count: stats.legal,
+      tip: 'Legal notices, NDAs, contracts, summons, arbitration. Always treated as urgent.' },
+    { cat: 'travel',          icon: '✈️', label: 'Travel & Hotels',    color: 'var(--accent-purple)', count: stats.travel,
+      tip: 'Flight & hotel bookings, PNRs, itineraries, e-tickets, check-in reminders.' },
+    { cat: 'pitch_deck',      icon: '🚀', label: 'Pitch Decks',       color: 'var(--accent-orange)', count: stats.pitch_deck,
+      tip: 'Investment pitches, funding rounds, term sheets, VC outreach.' },
+    { cat: 'rewards_awards',  icon: '🏆', label: 'Rewards & Awards',   color: 'var(--accent-gold)',   count: stats.rewards_awards,
+      tip: 'Loyalty points, cashback, miles expiry, vouchers, recognition emails.' },
+    { cat: 'fyi',             icon: 'ℹ️', label: 'For Your Info',      color: 'var(--accent-gray)',   count: stats.fyi,
+      tip: 'Newsletters, weekly / monthly digests, course-platform updates, and automated noreply / no-reply senders. Informational — not action-required.' },
+    { cat: 'other',           icon: '📂', label: 'All Other',         color: 'var(--accent-slate)',  count: stats.other,
+      tip: "Emails that didn't match any specific category. Often person-to-person mail without a clear topic." },
+    { cat: 'trash',           icon: '🗑️', label: 'Trash',              color: 'var(--text-muted)',    count: stats.trash,
+      tip: 'Deleted emails. Recoverable until you disconnect the mail server with "permanently delete".' }
   ];
 
   res.send(`
@@ -1355,6 +1368,7 @@ router.get('/api/sidebar', (req, res) => {
       ${folders.map(f => `
         <a class="folder-item" style="display:flex;align-items:center;gap:10px;padding:10px 16px;cursor:pointer;border-radius:6px;margin:2px 8px;transition:background 150ms;text-decoration:none;color:var(--text-secondary);"
            hx-get="/api/emails?category=${f.cat}" hx-target="#email-list" hx-swap="innerHTML"
+           title="${escHtml(f.tip || f.label)}"
            onmouseenter="this.style.background='var(--bg-hover)'"
            onmouseleave="this.style.background=''">
           <span style="font-size:16px;flex-shrink:0;">${f.icon}</span>
