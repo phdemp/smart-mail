@@ -1,5 +1,6 @@
 const { db, getConfig } = require('./db');
 const llm = require('./llm');
+const { CATEGORIES, URGENCIES } = require('./llm/providers/base');
 
 let broadcast = () => {};
 function setBroadcast(fn) { broadcast = fn; }
@@ -52,12 +53,15 @@ function rulesClassify(email) {
   if (/pitch deck (?:attached|included)|our (?:seed|series [a-d]) round|raising \$?\d|pre.?money valuation|(?:term sheet|cap table) attached|our portfolio includes/.test(body)) return 'pitch_deck';
 
   // ── FYI / Newsletters / System notifications ─────────────────────────────
-  if (/newsletter|weekly digest|monthly update|round.?up|unsubscribe/.test(all)) return 'fyi';
+  // Be precise. We deliberately do NOT match on body-level "unsubscribe" or
+  // CAN-SPAM compliance phrases — every legitimate transactional email
+  // (banking, SaaS access alerts, HR comms) contains an unsubscribe footer
+  // and would otherwise be mis-bucketed as FYI.
+  if (/newsletter|weekly digest|monthly update|round.?up/.test(all)) return 'fyi';
   if (/noreply@|no-reply@|newsletter@|digest@|updates@|mailer@|notifications@|donotreply@/.test(from)) return 'fyi';
   if (/\bdigest\b|\bnewsletter\b|\bweekly\b|\bmonthly\b/.test(sub) && !/meeting|invoice|statement/.test(sub)) return 'fyi';
   if (/emeritus|coursera|udemy|edx|canvas notification|assignment posted|week \d+ of|course update|programme.*notification/.test(from + ' ' + sub)) return 'fyi';
   if (/notification|alert|reminder|is now available|has been posted/.test(sub) && /noreply|system|auto/.test(from)) return 'fyi';
-  if (/unsubscribe (?:from|here|link)|view (?:this email )?in (?:your )?browser|you (?:are )?receiv(?:ing|ed) this email because|manage (?:your )?(?:preferences|subscriptions)/.test(body)) return 'fyi';
 
   // ── Speaking / conference invites ────────────────────────────────────────
   if (/invitation to speak|keynote|panelist|speaker.*invitation|invite you to|join us for|masterclass|webinar|conference.*invite/.test(sub)) return 'meeting_request';
@@ -197,12 +201,19 @@ async function classifyEmail(userId, emailId) {
 
 function storeClassification(userId, emailId, data) {
   try {
+    // Sanitize category/urgency at the storage boundary. parseProviderResponse
+    // already does this for LLM output, but a defense-in-depth check here
+    // catches any code path that constructs `data` directly (e.g. legacy
+    // imports, future callers, or out-of-enum values like the historical
+    // 'request' rows the old TF-IDF classifier wrote).
+    const safeCategory = CATEGORIES.includes(data.category) ? data.category : 'other';
+    const safeUrgency  = URGENCIES.includes(data.urgency)   ? data.urgency  : 'normal';
     db.prepare(`
       INSERT OR IGNORE INTO classifications
       (user_id, email_id, category, urgency, urgency_reason, summary, extracted_data, draft_reply, suggested_tone, source)
       VALUES (?,?,?,?,?,?,?,?,?,?)
     `).run(
-      userId, emailId, data.category, data.urgency, data.urgency_reason,
+      userId, emailId, safeCategory, safeUrgency, data.urgency_reason,
       data.summary,
       typeof data.extracted_data === 'string' ? data.extracted_data : JSON.stringify(data.extracted_data || {}),
       data.draft_reply || null, data.suggested_tone, data.source || null
