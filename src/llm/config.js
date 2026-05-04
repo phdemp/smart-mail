@@ -5,6 +5,20 @@ function parseList(s) {
   return String(s).split(',').map(x => x.trim()).filter(Boolean);
 }
 
+// Default (server-provided) API keys are usable on the calendar day a user
+// signed up, in UTC. After that the user must supply their own keys.
+function defaultKeysStatusFor(userId) {
+  if (userId == null) return { active: false, expires_at: null };
+  const row = db.prepare(`
+    SELECT date(created_at) AS day,
+           datetime(date(created_at), '+1 day') AS expires_at,
+           date(created_at) = date('now') AS active
+      FROM users WHERE id = ?
+  `).get(userId);
+  if (!row) return { active: false, expires_at: null };
+  return { active: !!row.active, expires_at: row.expires_at };
+}
+
 function resolveConfig(userId) {
   const rowRaw = userId != null
     ? db.prepare('SELECT * FROM account_config WHERE user_id = ?').get(userId)
@@ -13,11 +27,16 @@ function resolveConfig(userId) {
   const orderRaw = parseList(row.llm_provider_order);
   const enabledRaw = parseList(row.llm_providers_enabled);
 
+  // Stored keys always count. Env-provided default keys ONLY count for users
+  // still inside their signup-day window — once the day flips in UTC, env
+  // fallbacks stop applying for that user.
+  const defaultsActive = defaultKeysStatusFor(userId).active;
+  const envOr = (envKey) => defaultsActive ? (process.env[envKey] || null) : null;
   const keys = {
-    nvidia:   process.env.NVIDIA_API_KEY   || row.nvidia_api_key   || null,
-    groq:     process.env.GROQ_API_KEY     || row.groq_api_key     || null,
-    gemini:   process.env.GEMINI_API_KEY   || row.gemini_api_key   || null,
-    deepseek: process.env.DEEPSEEK_API_KEY || row.deepseek_api_key || null
+    nvidia:   row.nvidia_api_key   || envOr('NVIDIA_API_KEY'),
+    groq:     row.groq_api_key     || envOr('GROQ_API_KEY'),
+    gemini:   row.gemini_api_key   || envOr('GEMINI_API_KEY'),
+    deepseek: row.deepseek_api_key || envOr('DEEPSEEK_API_KEY')
   };
   const models = {
     nvidia:   row.nvidia_model   || 'meta/llama-3.3-70b-instruct',
@@ -92,4 +111,4 @@ function saveProviderConfig(userId, upd) {
     );
 }
 
-module.exports = { resolveConfig, saveProviderConfig };
+module.exports = { resolveConfig, saveProviderConfig, defaultKeysStatusFor };

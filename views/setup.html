@@ -348,7 +348,10 @@ function setupWizard() {
         const data = await res.json();
         if (res.ok) {
           localStorage.setItem('intellimail_token', data.token);
-          location.href = '/dashboard';
+          // Land on the AI Providers tab so first-time users see the
+          // trial-keys banner and can paste their own keys before the
+          // signup-day window expires.
+          location.href = '/settings?firstrun=1#providers';
           return;
         }
         if (res.status === 409) {

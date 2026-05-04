@@ -1184,13 +1184,50 @@ router.get('/api/providers/usage', (req, res) => {
   res.json(out);
 });
 
+// Returns whether server-provided default API keys are still active for this
+// user. Active only on the calendar day (UTC) of signup; after that the user
+// must supply their own keys. Drives the trial banner in Settings → AI
+// Providers and decides which env keys still count in the status / reclassify
+// gates above.
+router.get('/api/llm/default-keys-status', (req, res) => {
+  const { defaultKeysStatusFor } = require('../llm/config');
+  const status = defaultKeysStatusFor(req.user.id);
+  // List which provider env keys are even configured — there's no point
+  // showing a "trial active" banner if the server has no keys to lend.
+  const configured = {
+    nvidia:   !!process.env.NVIDIA_API_KEY,
+    groq:     !!process.env.GROQ_API_KEY,
+    gemini:   !!process.env.GEMINI_API_KEY,
+    deepseek: !!process.env.DEEPSEEK_API_KEY
+  };
+  let hoursRemaining = null;
+  if (status.active && status.expires_at) {
+    // expires_at is "YYYY-MM-DD HH:MM:SS" UTC from SQLite. Append 'Z' so
+    // Date parses it as UTC, not local.
+    const ms = new Date(status.expires_at + 'Z').getTime() - Date.now();
+    hoursRemaining = Math.max(0, Math.round(ms / 3600_000));
+  }
+  res.json({
+    active: status.active,
+    expires_at: status.expires_at,
+    hours_remaining: hoursRemaining,
+    any_default_configured: Object.values(configured).some(Boolean),
+    configured
+  });
+});
+
 // ─── LLM key status + fallback reclassify ───────────────────────────────────
 router.get('/api/llm/status', (req, res) => {
   const cfg = getConfig(req.user.id) || {};
-  const hasNvidia = !!(process.env.NVIDIA_API_KEY || cfg.nvidia_api_key);
-  const hasGroq = !!(process.env.GROQ_API_KEY || cfg.groq_api_key);
-  const hasGemini = !!(process.env.GEMINI_API_KEY || cfg.gemini_api_key);
-  const hasDeepseek = !!(process.env.DEEPSEEK_API_KEY || cfg.deepseek_api_key);
+  const { defaultKeysStatusFor } = require('../llm/config');
+  const defaults = defaultKeysStatusFor(req.user.id);
+  // Env-provided default keys only count while still inside the user's
+  // signup-day window. After that the user MUST have their own DB key.
+  const envOr = (envKey) => defaults.active ? !!process.env[envKey] : false;
+  const hasNvidia   = !!cfg.nvidia_api_key   || envOr('NVIDIA_API_KEY');
+  const hasGroq     = !!cfg.groq_api_key     || envOr('GROQ_API_KEY');
+  const hasGemini   = !!cfg.gemini_api_key   || envOr('GEMINI_API_KEY');
+  const hasDeepseek = !!cfg.deepseek_api_key || envOr('DEEPSEEK_API_KEY');
   const fallbackCount = db.prepare(
     "SELECT COUNT(*) as n FROM classifications WHERE user_id = ? AND source = 'fallback'"
   ).get(req.user.id).n;
@@ -1251,11 +1288,14 @@ router.get('/api/llm/status', (req, res) => {
 
 router.post('/api/classifications/reclassify-fallback', (req, res) => {
   const cfg = getConfig(req.user.id) || {};
+  const { defaultKeysStatusFor } = require('../llm/config');
+  const defaults = defaultKeysStatusFor(req.user.id);
+  const envHas = (k) => defaults.active && !!process.env[k];
   const hasCloud = !!(
-    process.env.NVIDIA_API_KEY || cfg.nvidia_api_key ||
-    process.env.GROQ_API_KEY || cfg.groq_api_key ||
-    process.env.GEMINI_API_KEY || cfg.gemini_api_key ||
-    process.env.DEEPSEEK_API_KEY || cfg.deepseek_api_key
+    cfg.nvidia_api_key   || envHas('NVIDIA_API_KEY') ||
+    cfg.groq_api_key     || envHas('GROQ_API_KEY') ||
+    cfg.gemini_api_key   || envHas('GEMINI_API_KEY') ||
+    cfg.deepseek_api_key || envHas('DEEPSEEK_API_KEY')
   );
   if (!hasCloud) return res.status(400).json({ error: 'no_llm_configured' });
 

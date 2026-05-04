@@ -162,6 +162,29 @@
       Fallback chain for Tier-2 classification and draft regen. Toggle to enable, drag to reorder.
     </p>
 
+    <!-- Trial-keys banner. Shown only when the server has any default key
+         configured. Active state: green/amber, advisory. Expired state: red. -->
+    <template x-if="defaultKeys && defaultKeys.any_default_configured && defaultKeys.active">
+      <div style="margin:0 0 14px;padding:12px 14px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.4);border-radius:6px;font-size:12px;color:var(--text-primary);line-height:1.55;">
+        <div style="font-weight:600;margin-bottom:4px;">⏱ Free trial — default API keys active for today only</div>
+        <div style="color:var(--text-muted);">
+          Our shared API keys work on your signup day only
+          (<span x-text="defaultKeys.hours_remaining"></span> hour<span x-show="defaultKeys.hours_remaining !== 1">s</span> left, expires at midnight UTC).
+          Add at least one of your own NVIDIA / Groq / Gemini / DeepSeek keys before then so AI features keep running tomorrow.
+        </div>
+      </div>
+    </template>
+    <template x-if="defaultKeys && defaultKeys.any_default_configured && !defaultKeys.active">
+      <div style="margin:0 0 14px;padding:12px 14px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.4);border-radius:6px;font-size:12px;color:var(--text-primary);line-height:1.55;">
+        <div style="font-weight:600;margin-bottom:4px;color:var(--accent-red);">⚠ Default API keys have expired</div>
+        <div style="color:var(--text-muted);">
+          The free trial of our shared API keys ended at midnight UTC of your signup day.
+          Add your own key for at least one provider below — until then, AI classification
+          and draft regen will fall back to rules-only output.
+        </div>
+      </div>
+    </template>
+
     <template x-for="(p, idx) in providerList" :key="p.name">
       <div draggable="true"
            @dragstart="dragIdx=idx"
@@ -390,10 +413,21 @@ function settingsApp() {
       smtp_host:'', smtp_port:587, smtp_tls:false,
       sync_interval:60
     },
-    activeTab: localStorage.getItem('im_settings_tab') || 'account',
+    activeTab: (location.hash === '#providers' || /[?&]firstrun=1/.test(location.search))
+      ? 'providers'
+      : (localStorage.getItem('im_settings_tab') || 'account'),
     setTab(name) {
       this.activeTab = name;
       localStorage.setItem('im_settings_tab', name);
+    },
+    // Default-keys trial state: { active, expires_at, hours_remaining,
+    // any_default_configured }. null until /api/llm/default-keys-status loads.
+    defaultKeys: null,
+    async loadDefaultKeysStatus() {
+      try {
+        const r = await authFetch('/api/llm/default-keys-status');
+        if (r.ok) this.defaultKeys = await r.json();
+      } catch {}
     },
     showPassword: false,
     saving: false,
@@ -451,6 +485,7 @@ function settingsApp() {
       } catch(e) {}
       await this.loadProviders();
       await this.loadLlmStatus();
+      await this.loadDefaultKeysStatus();
     },
 
     async loadLlmStatus() {
