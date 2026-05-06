@@ -1,16 +1,20 @@
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Literata:ital,wght@0,400;0,500;1,400&family=Syne:wght@400;500;600;700&display=swap');
 
+/* Light is the default theme. :root holds the light palette; the
+   dark palette below is opt-in via data-theme="dark" set by the
+   theme toggle in dashApp() and persisted in localStorage('im_theme').
+   Accent colors are theme-agnostic and stay at :root. */
 :root {
-  --bg-base:       #0b0e17;
-  --bg-panel:      #10141f;
-  --bg-raised:     #161b2e;
-  --bg-hover:      #1e2440;
-  --bg-active:     #1a2545;
-  --border:        #1f2640;
-  --border-bright: #2d3a5c;
-  --text-primary:  #e4e8f5;
-  --text-secondary:#8892b0;
-  --text-muted:    #4a5578;
+  --bg-base:       #f0f2f7;
+  --bg-panel:      #ffffff;
+  --bg-raised:     #e8ecf5;
+  --bg-hover:      #dde3f5;
+  --bg-active:     #d3daee;
+  --border:        #c8d0e5;
+  --border-bright: #b0bcd8;
+  --text-primary:  #1a2545;
+  --text-secondary:#4a5578;
+  --text-muted:    #7a86a8;
   --accent-cyan:   #00d4ff;
   --accent-amber:  #f59e0b;
   --accent-red:    #ef4444;
@@ -24,18 +28,18 @@
   --sidebar-width: 240px;
 }
 
-/* ── Light Theme ── */
-[data-theme="light"] {
-  --bg-base:       #f0f2f7;
-  --bg-panel:      #ffffff;
-  --bg-raised:     #e8ecf5;
-  --bg-hover:      #dde3f5;
-  --bg-active:     #d3daee;
-  --border:        #c8d0e5;
-  --border-bright: #b0bcd8;
-  --text-primary:  #1a2545;
-  --text-secondary:#4a5578;
-  --text-muted:    #7a86a8;
+/* ── Dark Theme (opt-in) ── */
+[data-theme="dark"] {
+  --bg-base:       #0b0e17;
+  --bg-panel:      #10141f;
+  --bg-raised:     #161b2e;
+  --bg-hover:      #1e2440;
+  --bg-active:     #1a2545;
+  --border:        #1f2640;
+  --border-bright: #2d3a5c;
+  --text-primary:  #e4e8f5;
+  --text-secondary:#8892b0;
+  --text-muted:    #4a5578;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }

@@ -67,6 +67,7 @@ function confirmModalComponent() {
 // ── Alpine: App State ─────────────────────────────────────────────────────────
 
 function appState() {
+  const savedTheme = localStorage.getItem('im_theme');
   return {
     sidebarCollapsed: false,
     stats: {
@@ -76,7 +77,7 @@ function appState() {
     },
     syncMode: 'connecting',
     lastSync: null,
-    theme: localStorage.getItem('im_theme') || 'light',
+    theme: savedTheme === 'dark' ? 'dark' : 'light',
     llmStatus: null,        // { has_cloud_keys, has_groq, has_gemini, fallback_count, pending_classification_count }
     pendingClassifying: 0,  // live count of emails currently queued / being classified
     classifyTotal: 0,       // peak value seen since last drain — used to compute progress %

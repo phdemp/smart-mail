@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>IntelliMail — Setup</title>
+  <!-- Pre-paint theme: see app.css. Applies dark theme before any CSS so
+       dark-mode users don't get a flash of the default light theme. -->
+  <script>(function(){try{if(localStorage.getItem('im_theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
   <script>
   (function () {
     const token = localStorage.getItem('intellimail_token');
@@ -26,14 +29,14 @@
         radial-gradient(ellipse at 80% 80%, rgba(167, 139, 250, 0.04) 0%, transparent 40%);
     }
     .setup-card {
-      background: rgba(16, 20, 31, 0.95);
+      background: var(--bg-panel);
       backdrop-filter: blur(20px);
-      border: 1px solid rgba(255,255,255,0.06);
+      border: 1px solid var(--border);
       border-radius: 16px;
       width: 100%;
       max-width: 560px;
       margin: 24px;
-      box-shadow: 0 24px 80px rgba(0,0,0,0.5);
+      box-shadow: 0 24px 80px rgba(26, 37, 69, 0.16);
     }
     .provider-btn {
       background: var(--bg-raised);

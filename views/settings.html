@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>IntelliMail — Settings</title>
+  <!-- Pre-paint theme: see app.css. Applies dark theme before any CSS so
+       dark-mode users don't get a flash of the default light theme. -->
+  <script>(function(){try{if(localStorage.getItem('im_theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
   <script>
   (function () {
     const token = localStorage.getItem('intellimail_token');
