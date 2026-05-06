@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Example: deploy with explicit key auth + custom path
+# DEPLOY_HOST=10.11.13.237 \
+# DEPLOY_USER=root \
+# DEPLOY_PATH=/opt/intellimail \
+# SSH_KEY=~/.ssh/intellimail-staging \
+# scripts/deploy-staging.sh

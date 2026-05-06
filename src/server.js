@@ -2,8 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const { db, getConfig, getStats } = require('./db');
-const { startSync, setBroadcast } = require('./imap');
-const { classifyAllUnclassified, setBroadcast: setClassifierBroadcast } = require('./classifier');
+const { startSyncForUser, setBroadcast } = require('./imap');
+const { classifyAllUnclassifiedForUser, setBroadcast: setClassifierBroadcast } = require('./classifier');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -63,16 +63,36 @@ setBroadcast((event, data) => {
 });
 setClassifierBroadcast(broadcast);
 
+// Auth gate: every /api/* route requires a valid JWT except the public endpoints below.
+const { requireAuth } = require('./middleware/auth');
+const PUBLIC_API_PATHS = new Set([
+  '/api/auth/signup', '/api/auth/login', '/api/auth/logout', '/api/auth/check',
+  '/api/users/any',
+  '/api/account/test-imap', '/api/account/test-smtp', '/api/account/test'
+]);
+app.use((req, res, next) => {
+  if (!req.path.startsWith('/api/')) return next();
+  if (PUBLIC_API_PATHS.has(req.path)) return next();
+  // /api/providers/:name/test is NOT public anymore — it resolves the caller's
+  // saved key from account_config, which requires knowing who the caller is.
+  return requireAuth(req, res, next);
+});
+
 // Routes
 const pagesRouter = require('./routes/pages');
 const apiRouter = require('./routes/api');
+const authRouter = require('./routes/auth');
+app.use('/', authRouter);
 app.use('/', pagesRouter);
 app.use('/', apiRouter);
 
 // Startup
 async function init() {
-  classifyAllUnclassified();
-  startSync();
+  const users = db.prepare('SELECT id FROM users').all();
+  for (const u of users) {
+    classifyAllUnclassifiedForUser(u.id);
+    startSyncForUser(u.id);
+  }
 }
 
 app.listen(PORT, () => {

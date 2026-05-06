@@ -1,42 +1,69 @@
 const { db, getConfig } = require('./db');
-
-const LOCAL_API = 'http://localhost:8765';
+const llm = require('./llm');
+const { CATEGORIES, URGENCIES } = require('./llm/providers/base');
 
 let broadcast = () => {};
 function setBroadcast(fn) { broadcast = fn; }
 
-let classificationQueue = [];
-let processing = false;
+// Per-user queue state
+const queues = new Map(); // userId -> { queue: [], processing: false }
+
+function q(userId) {
+  let s = queues.get(userId);
+  if (!s) { s = { queue: [], processing: false }; queues.set(userId, s); }
+  return s;
+}
 
 // ─── Tier 1: Rules-based classifier (instant, zero latency) ──────────────────
 
 function rulesClassify(email) {
   const sub  = (email.subject      || '').toLowerCase();
   const from = (email.from_address || '').toLowerCase();
-  const body = (email.body_text    || '').substring(0, 300).toLowerCase();
+  // Widened body window from 300 → 1500 chars so phrases like "Booking Reference
+  // ABC123", "Amount Due", "Scheduled for ..." that usually live deeper in the
+  // body can still trigger a rule. Still cheap (<1 ms regex on 1500 chars).
+  const body = (email.body_text    || '').substring(0, 1500).toLowerCase();
   const all  = sub + ' ' + body;
 
+  // ── Travel ────────────────────────────────────────────────────────────────
   if (/\bpnr\b|booking confirm|flight booking|hotel reserv|check-in|check in|itinerary|e-ticket|boarding pass/.test(sub)) return 'travel';
   if (/indigo|spicejet|air india|airindia|vistara|goair|akasa|makemytrip|goibibo|cleartrip|booking\.com|airbnb|hotels\.com|marriott|oyo/.test(from)) return 'travel';
+  if (/\bpnr[:\s]|booking reference|flight (?:number|pnr)|departure[:\s]|arrival[:\s]|check[\s-]?in date|boarding pass|itinerary id/.test(body)) return 'travel';
 
-  if (/statement|credit card bill|amount due|payment due|emi due|outstanding amount|invoice|receipt|transaction alert/.test(sub)) return 'financial';
+  // ── Financial ─────────────────────────────────────────────────────────────
+  if (/statement|credit card bill|amount due|payment due|emi due|outstanding amount|invoice|receipt|transaction alert|payment sheet|payment schedule|payment summary|payment reminder|bill payment|payslip|salary slip|tax invoice/.test(sub)) return 'financial';
   if (/hdfc|icici|axis bank|sbi|kotak|paytm|razorpay|phonepe|gpay|navi|bajaj finance|cred\.club/.test(from)) return 'financial';
+  if (/(?:amount|balance|total) due[:\s]|payment due (?:on|by|date)|minimum amount payable|outstanding balance|invoice (?:number|no|amount)|transaction (?:alert|details)|credited to your account|debited from your account/.test(body)) return 'financial';
 
+  // ── Legal ─────────────────────────────────────────────────────────────────
   if (/legal notice|without prejudice|take notice|cease and desist|\bnda\b|non.disclosure|arbitration|litigation|summons/.test(sub)) return 'legal';
+  if (/without prejudice|cease and desist|legal notice|pursuant to section|breach of contract|served with (?:a )?(?:notice|summons)|arbitration proceedings|non.?disclosure agreement/.test(body)) return 'legal';
 
+  // ── Meeting / Calendar ───────────────────────────────────────────────────
   if (/\bmeeting\b|\binvite\b|calendar invite|has invited you|scheduled a|let's connect|quick call|video call|zoom link|google meet|teams meeting|webex/.test(sub)) return 'meeting_request';
   if (/\bmeeting\b|\binvite\b|scheduled a|has invited you/.test(body) && /zoom|meet|teams|webex|calendly/.test(all)) return 'meeting_request';
+  if (/when[:\s].{0,80}(?:am|pm)|where[:\s](?:zoom|google meet|teams|webex|http)|join (?:the )?(?:zoom|meet|teams|webex|meeting)|calendar invite attached|begin:vcalendar|dtstart[:;]/.test(body)) return 'meeting_request';
 
+  // ── Rewards / Awards ─────────────────────────────────────────────────────
   if (/points expir|miles expir|reward.*expir|cashback|loyalty point|bluechip|smartbuy|reward balance|voucher|gift card|award nominat|recognition/.test(sub)) return 'rewards_awards';
+  if (/your (?:points|miles) (?:are )?expir|\d+ reward points|cashback credited|loyalty (?:program|tier)|redeem your (?:points|miles|voucher)|congratulations.{0,40}(?:award|nominat)/.test(body)) return 'rewards_awards';
 
+  // ── Pitch deck / Investment ──────────────────────────────────────────────
   if (/pitch|investment opportun|series [abcd]|funding round|seeking investment|venture capital|\bvc\b.*fund/.test(sub)) return 'pitch_deck';
+  if (/pitch deck (?:attached|included)|our (?:seed|series [a-d]) round|raising \$?\d|pre.?money valuation|(?:term sheet|cap table) attached|our portfolio includes/.test(body)) return 'pitch_deck';
 
-  if (/newsletter|weekly digest|monthly update|round.?up|unsubscribe/.test(all)) return 'fyi';
+  // ── FYI / Newsletters / System notifications ─────────────────────────────
+  // Be precise. We deliberately do NOT match on body-level "unsubscribe" or
+  // CAN-SPAM compliance phrases — every legitimate transactional email
+  // (banking, SaaS access alerts, HR comms) contains an unsubscribe footer
+  // and would otherwise be mis-bucketed as FYI.
+  if (/newsletter|weekly digest|monthly update|round.?up/.test(all)) return 'fyi';
   if (/noreply@|no-reply@|newsletter@|digest@|updates@|mailer@|notifications@|donotreply@/.test(from)) return 'fyi';
   if (/\bdigest\b|\bnewsletter\b|\bweekly\b|\bmonthly\b/.test(sub) && !/meeting|invoice|statement/.test(sub)) return 'fyi';
   if (/emeritus|coursera|udemy|edx|canvas notification|assignment posted|week \d+ of|course update|programme.*notification/.test(from + ' ' + sub)) return 'fyi';
   if (/notification|alert|reminder|is now available|has been posted/.test(sub) && /noreply|system|auto/.test(from)) return 'fyi';
 
+  // ── Speaking / conference invites ────────────────────────────────────────
   if (/invitation to speak|keynote|panelist|speaker.*invitation|invite you to|join us for|masterclass|webinar|conference.*invite/.test(sub)) return 'meeting_request';
   if (/one.to.one|1:1|catch.?up|sync.?up|quick chat/.test(sub)) return 'meeting_request';
 
@@ -85,38 +112,6 @@ function rulesUrgency(category, email) {
   return { urgency: 'normal', urgency_reason: null };
 }
 
-// ─── Tier 2: Local ollama/fastapi classifier ──────────────────────────────────
-
-async function localClassify(email) {
-  const response = await fetch(`${LOCAL_API}/classify`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      subject:      email.subject      || '',
-      from_address: email.from_address || '',
-      from_name:    email.from_name    || '',
-      preview:      (email.body_text   || '').substring(0, 400),
-      email_id:     String(email.id)
-    })
-  });
-  if (!response.ok) throw new Error(`Local API error: ${response.status}`);
-  return response.json();
-}
-
-// ─── Draft generation ─────────────────────────────────────────────────────────
-
-async function generateDraft(emailId) {
-  const email = db.prepare('SELECT * FROM emails WHERE id = ?').get(emailId);
-  if (!email) return null;
-
-  try {
-    const result = await localClassify(email);
-    return result.draft_reply || 'Thank you for your email. I will review and respond shortly.';
-  } catch {
-    return 'Thank you for your email. I will review and respond shortly.';
-  }
-}
-
 // ─── Fallback ─────────────────────────────────────────────────────────────────
 
 function fallbackClassification() {
@@ -129,14 +124,43 @@ function fallbackClassification() {
   };
 }
 
+// ─── Classification scope ────────────────────────────────────────────────────
+//
+// To bound LLM cost, only the smaller of {latest 100 emails, last 10 days} per
+// user is eligible for classification. Out-of-scope emails store no row and
+// surface in the UI as "uncategorized". The pending-count query in
+// /api/llm/status applies the same predicate so the dashboard pill stays
+// consistent.
+const SCOPE_DAYS = 10;
+const SCOPE_LIMIT = 100;
+
+function isInClassificationScope(userId, emailId) {
+  const row = db.prepare(`
+    SELECT 1 FROM emails e
+    WHERE e.id = ? AND e.user_id = ?
+      AND e.received_at >= datetime('now', '-${SCOPE_DAYS} days')
+      AND e.id IN (
+        SELECT id FROM emails
+        WHERE user_id = ?
+        ORDER BY received_at DESC
+        LIMIT ${SCOPE_LIMIT}
+      )
+  `).get(emailId, userId, userId);
+  return !!row;
+}
+
 // ─── Core classification ──────────────────────────────────────────────────────
 
-async function classifyEmail(emailId) {
-  const email = db.prepare('SELECT * FROM emails WHERE id = ?').get(emailId);
+async function classifyEmail(userId, emailId) {
+  const email = db.prepare('SELECT * FROM emails WHERE id = ? AND user_id = ?').get(emailId, userId);
   if (!email) return;
 
-  const existing = db.prepare('SELECT id FROM classifications WHERE email_id = ?').get(emailId);
+  const existing = db.prepare('SELECT id FROM classifications WHERE email_id = ? AND user_id = ?').get(emailId, userId);
   if (existing) return;
+
+  // Scope gate: skip emails outside the classification window. No row written —
+  // pending-count query mirrors this predicate so they don't appear "stuck".
+  if (!isInClassificationScope(userId, emailId)) return;
 
   // Tier 1: instant rules
   const rulesCategory = rulesClassify(email);
@@ -145,88 +169,126 @@ async function classifyEmail(emailId) {
     const extracted = rulesExtractedData(rulesCategory, email);
     const sub = email.subject || '';
     const summary = `${email.from_name || email.from_address} sent: ${sub.substring(0, 80)}${sub.length > 80 ? '...' : ''}.`;
-    storeClassification(emailId, {
+    storeClassification(userId, emailId, {
       category: rulesCategory, urgency, urgency_reason, summary,
-      extracted_data: extracted, suggested_tone: 'professional', draft_reply: null
+      extracted_data: extracted, suggested_tone: 'professional', draft_reply: null,
+      source: 'rules'
     });
     return;
   }
 
-  // Tier 2: local LLM
+  // Tier 2: provider cascade (nvidia → groq → gemini → deepseek)
   try {
-    const result = await localClassify(email);
-    storeClassification(emailId, {
-      category:       result.category,
-      urgency:        result.urgency,
-      urgency_reason: result.urgency_reason,
-      summary:        result.summary,
-      extracted_data: result.extracted_data || {},
-      suggested_tone: result.suggested_tone || 'professional',
-      draft_reply:    result.draft_reply    || null
-    });
+    const routed = await llm.router.classify(email, { mode: 'full', userId });
+    if (routed) {
+      storeClassification(userId, emailId, {
+        category:       routed.category,
+        urgency:        routed.urgency,
+        urgency_reason: routed.urgency_reason,
+        summary:        routed.summary,
+        extracted_data: routed.extracted_data || {},
+        suggested_tone: routed.suggested_tone || 'professional',
+        draft_reply:    routed.draft_reply    || null,
+        source:         'llm'
+      });
+      return;
+    }
   } catch (err) {
-    console.error(`[classifier] local API failed for email ${emailId}:`, err.message);
-    storeClassification(emailId, fallbackClassification());
+    console.error(`[classifier] router failed for user=${userId} email=${emailId}:`, err.message);
   }
+  storeClassification(userId, emailId, { ...fallbackClassification(), source: 'fallback' });
 }
 
-function storeClassification(emailId, data) {
+function storeClassification(userId, emailId, data) {
   try {
+    // Sanitize category/urgency at the storage boundary. parseProviderResponse
+    // already does this for LLM output, but a defense-in-depth check here
+    // catches any code path that constructs `data` directly (e.g. legacy
+    // imports, future callers, or out-of-enum values like the historical
+    // 'request' rows the old TF-IDF classifier wrote).
+    const safeCategory = CATEGORIES.includes(data.category) ? data.category : 'other';
+    const safeUrgency  = URGENCIES.includes(data.urgency)   ? data.urgency  : 'normal';
     db.prepare(`
       INSERT OR IGNORE INTO classifications
-      (email_id, category, urgency, urgency_reason, summary, extracted_data, draft_reply, suggested_tone)
-      VALUES (?,?,?,?,?,?,?,?)
+      (user_id, email_id, category, urgency, urgency_reason, summary, extracted_data, draft_reply, suggested_tone, source)
+      VALUES (?,?,?,?,?,?,?,?,?,?)
     `).run(
-      emailId, data.category, data.urgency, data.urgency_reason,
+      userId, emailId, safeCategory, safeUrgency, data.urgency_reason,
       data.summary,
       typeof data.extracted_data === 'string' ? data.extracted_data : JSON.stringify(data.extracted_data || {}),
-      data.draft_reply || null, data.suggested_tone
+      data.draft_reply || null, data.suggested_tone, data.source || null
     );
 
     broadcast('classification_done', {
+      user_id: userId,
       email_id: emailId,
       category: data.category,
       urgency:  data.urgency
     });
 
-    const email = db.prepare('SELECT * FROM emails WHERE id = ?').get(emailId);
-    const existing = db.prepare('SELECT id FROM drafts WHERE email_id = ?').get(emailId);
-    if (!existing && email && !['fyi', 'other'].includes(data.category)) {
-      db.prepare('INSERT INTO drafts (email_id, body, tone, subject, to_address) VALUES (?,?,?,?,?)')
-        .run(emailId, '', data.suggested_tone || 'professional', 'Re: ' + email.subject, email.from_address);
+    // Create an empty draft row for EVERY email (regardless of category).
+    // The draft editor will auto-regen on first open via the router, so users
+    // get an LLM reply on every email — inbox, urgent, fyi, anything.
+    const email = db.prepare('SELECT * FROM emails WHERE id = ? AND user_id = ?').get(emailId, userId);
+    const existing = db.prepare('SELECT id FROM drafts WHERE email_id = ? AND user_id = ?').get(emailId, userId);
+    if (!existing && email) {
+      db.prepare('INSERT INTO drafts (user_id, email_id, body, tone, subject, to_address) VALUES (?,?,?,?,?,?)')
+        .run(userId, emailId, '', data.suggested_tone || 'professional', 'Re: ' + email.subject, email.from_address);
     }
   } catch (e) {
-    // silent
+    // silent: classifier failures shouldn't block sync
   }
 }
 
-async function processQueue() {
-  if (processing || classificationQueue.length === 0) return;
-  processing = true;
+async function processQueueFor(userId) {
+  const s = q(userId);
+  if (s.processing || s.queue.length === 0) return;
+  s.processing = true;
   try {
-    while (classificationQueue.length > 0) {
-      const batch = classificationQueue.splice(0, 5);
-      await Promise.all(batch.map(id => classifyEmail(id)));
+    while (s.queue.length > 0) {
+      const batch = s.queue.splice(0, 5);
+      await Promise.all(batch.map(id => classifyEmail(userId, id)));
     }
   } finally {
-    processing = false;
+    s.processing = false;
   }
 }
 
-function queueClassification(emailId) {
-  if (!classificationQueue.includes(emailId)) {
-    classificationQueue.push(emailId);
-  }
-  setImmediate(processQueue);
+function queueClassification(userId, emailId) {
+  const s = q(userId);
+  if (!s.queue.includes(emailId)) s.queue.push(emailId);
+  setImmediate(() => processQueueFor(userId));
 }
 
-async function classifyAllUnclassified() {
+async function classifyAllUnclassifiedForUser(userId) {
   const rows = db.prepare(`
     SELECT e.id FROM emails e
-    LEFT JOIN classifications c ON c.email_id = e.id
-    WHERE c.id IS NULL
-  `).all();
-  for (const row of rows) queueClassification(row.id);
+    LEFT JOIN classifications c ON c.email_id = e.id AND c.user_id = e.user_id
+    WHERE c.id IS NULL AND e.user_id = ?
+  `).all(userId);
+  for (const row of rows) queueClassification(userId, row.id);
 }
 
-module.exports = { queueClassification, classifyAllUnclassified, classifyEmail, generateDraft, setBroadcast };
+// ─── Draft generation ─────────────────────────────────────────────────────────
+
+async function generateDraft(userId, emailId) {
+  const email = db.prepare('SELECT * FROM emails WHERE id = ? AND user_id = ?').get(emailId, userId);
+  if (!email) return null;
+  try {
+    const routed = await llm.router.classify(email, { mode: 'regen', userId });
+    return routed?.draft_reply || 'Thank you for your email. I will review and respond shortly.';
+  } catch {
+    return 'Thank you for your email. I will review and respond shortly.';
+  }
+}
+
+module.exports = {
+  queueClassification,
+  classifyAllUnclassifiedForUser,
+  classifyEmail,
+  generateDraft,
+  setBroadcast,
+  isInClassificationScope,
+  SCOPE_DAYS,
+  SCOPE_LIMIT
+};

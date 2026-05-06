@@ -4,22 +4,39 @@ const cron = require('node-cron');
 const crypto = require('crypto');
 const { db, getConfig } = require('./db');
 const { queueClassification } = require('./classifier');
+const { mapAuthError } = require('./util/credentials');
 
 let broadcast = () => {};
-let syncMode = 'disconnected';
-let lastSeenUID = 0;
-let idleDropTimes = [];
-let cronJob = null;
-let recoveryInterval = null;
-let renewalTimer = null;
-let currentClient = null;
-
 function setBroadcast(fn) { broadcast = fn; }
-function getSyncMode() { return syncMode; }
 
-function setSyncMode(mode) {
-  syncMode = mode;
-  broadcast('sync_status', { mode, lastSync: new Date().toISOString() });
+// Per-user sync state.
+const states = new Map();
+
+function stateFor(userId) {
+  let s = states.get(userId);
+  if (!s) {
+    s = {
+      userId,
+      syncMode: 'disconnected',
+      lastSeenUID: 0,
+      idleDropTimes: [],
+      cronJob: null,
+      recoveryInterval: null,
+      renewalTimer: null,
+      currentClient: null
+    };
+    states.set(userId, s);
+  }
+  return s;
+}
+
+function getSyncMode(userId) {
+  return stateFor(userId).syncMode;
+}
+
+function setSyncMode(userId, mode) {
+  stateFor(userId).syncMode = mode;
+  broadcast('sync_status', { userId, mode, lastSync: new Date().toISOString() });
 }
 
 async function createClient(cfg) {
@@ -42,15 +59,16 @@ async function createClient(cfg) {
   });
 }
 
-async function storeEmail(parsed, folder) {
+async function storeEmail(userId, parsed, folder) {
   const msgId = parsed.messageId || `uid-${Date.now()}-${Math.random()}`;
   try {
     const result = db.prepare(`
       INSERT OR IGNORE INTO emails
-      (message_id, uid, folder, from_address, from_name, to_address, cc_address,
+      (user_id, message_id, uid, folder, from_address, from_name, to_address, cc_address,
        subject, body_text, body_html, received_at, is_read)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
     `).run(
+      userId,
       msgId, String(parsed.uid || ''), folder,
       parsed.from?.value?.[0]?.address || '',
       parsed.from?.value?.[0]?.name || '',
@@ -63,8 +81,10 @@ async function storeEmail(parsed, folder) {
       0
     );
     if (result.changes === 0) {
-      // Already existed — return existing id
-      const existing = db.prepare('SELECT id FROM emails WHERE message_id = ?').get(msgId);
+      // Already existed — return existing id (scoped to this user)
+      const existing = db.prepare(
+        'SELECT id FROM emails WHERE message_id = ? AND user_id = ?'
+      ).get(msgId, userId);
       return existing ? existing.id : null;
     }
     return result.lastInsertRowid;
@@ -74,7 +94,8 @@ async function storeEmail(parsed, folder) {
   }
 }
 
-async function fetchMessages(client, folder, limit) {
+async function fetchMessages(userId, client, folder, limit) {
+  const state = stateFor(userId);
   try {
     await client.mailboxOpen(folder);
   } catch (e) {
@@ -91,10 +112,10 @@ async function fetchMessages(client, folder, limit) {
     try {
       const parsed = await simpleParser(msg.source);
       parsed.uid = msg.uid;
-      const id = await storeEmail(parsed, folder);
-      if (id) queueClassification(id);
-      if (parsed.uid && parsed.uid > lastSeenUID && folder === 'INBOX') {
-        lastSeenUID = parsed.uid;
+      const id = await storeEmail(userId, parsed, folder);
+      if (id) queueClassification(userId, id);
+      if (parsed.uid && parsed.uid > state.lastSeenUID && folder === 'INBOX') {
+        state.lastSeenUID = parsed.uid;
       }
     } catch (e) {
       console.error('Parse/store error:', e.message);
@@ -122,70 +143,77 @@ async function fetchSinceUID(client, folder, sinceUID) {
   return newMsgs;
 }
 
-function checkCircuitBreaker() {
+function checkCircuitBreaker(userId) {
+  const state = stateFor(userId);
   const now = Date.now();
-  idleDropTimes = idleDropTimes.filter(t => now - t < 5 * 60 * 1000);
-  idleDropTimes.push(now);
-  return idleDropTimes.length >= 3;
+  state.idleDropTimes = state.idleDropTimes.filter(t => now - t < 5 * 60 * 1000);
+  state.idleDropTimes.push(now);
+  return state.idleDropTimes.length >= 3;
 }
 
-function clearRenewalTimer() {
-  if (renewalTimer) { clearTimeout(renewalTimer); renewalTimer = null; }
+function clearRenewalTimer(userId) {
+  const state = stateFor(userId);
+  if (state.renewalTimer) { clearTimeout(state.renewalTimer); state.renewalTimer = null; }
 }
 
-async function startPolling(cfg) {
-  setSyncMode('polling');
-  if (cronJob) cronJob.stop();
+async function startPolling(userId, cfg) {
+  const state = stateFor(userId);
+  setSyncMode(userId, 'polling');
+  if (state.cronJob) state.cronJob.stop();
 
-  cronJob = cron.schedule('*/60 * * * * *', async () => {
-    if (syncMode !== 'polling') return;
+  state.cronJob = cron.schedule('*/60 * * * * *', async () => {
+    if (state.syncMode !== 'polling') return;
     try {
       const client = await createClient(cfg);
       await client.connect();
-      const newMsgs = await fetchSinceUID(client, 'INBOX', lastSeenUID);
+      const newMsgs = await fetchSinceUID(client, 'INBOX', state.lastSeenUID);
       for (const parsed of newMsgs) {
-        const id = await storeEmail(parsed, 'INBOX');
+        const id = await storeEmail(userId, parsed, 'INBOX');
         if (id) {
-          queueClassification(id);
-          if (parsed.uid > lastSeenUID) lastSeenUID = parsed.uid;
+          queueClassification(userId, id);
+          if (parsed.uid > state.lastSeenUID) state.lastSeenUID = parsed.uid;
           broadcast('new_email', {
+            userId,
             id, subject: parsed.subject,
             from_name: parsed.from?.value?.[0]?.name || parsed.from?.value?.[0]?.address || 'Unknown'
           });
         }
       }
       await client.logout();
-      broadcast('sync_status', { mode: 'polling', lastSync: new Date().toISOString() });
-      db.prepare("INSERT INTO sync_log (sync_mode, folder, new_count) VALUES ('polling', 'INBOX', ?)")
-        .run(newMsgs.length);
+      broadcast('sync_status', { userId, mode: 'polling', lastSync: new Date().toISOString() });
+      db.prepare(
+        "INSERT INTO sync_log (user_id, sync_mode, folder, new_count) VALUES (?, 'polling', 'INBOX', ?)"
+      ).run(userId, newMsgs.length);
     } catch (e) {
-      db.prepare("INSERT INTO sync_log (sync_mode, folder, error) VALUES ('polling','INBOX',?)")
-        .run(e.message);
+      db.prepare(
+        "INSERT INTO sync_log (user_id, sync_mode, folder, error) VALUES (?, 'polling','INBOX',?)"
+      ).run(userId, e.message);
     }
   });
 
   // Attempt IDLE recovery every 5 minutes
-  if (!recoveryInterval) {
-    recoveryInterval = setInterval(async () => {
-      if (syncMode !== 'polling') return;
+  if (!state.recoveryInterval) {
+    state.recoveryInterval = setInterval(async () => {
+      if (state.syncMode !== 'polling') return;
       try {
-        idleDropTimes = [];
-        await startIDLE(cfg);
+        state.idleDropTimes = [];
+        await startIDLE(userId, cfg);
       } catch (e) { /* still polling */ }
     }, 5 * 60 * 1000);
   }
 }
 
-async function startIDLE(cfg) {
-  clearRenewalTimer();
-  if (currentClient) {
-    try { await currentClient.logout(); } catch(e) {}
-    currentClient = null;
+async function startIDLE(userId, cfg) {
+  const state = stateFor(userId);
+  clearRenewalTimer(userId);
+  if (state.currentClient) {
+    try { await state.currentClient.logout(); } catch(e) {}
+    state.currentClient = null;
   }
 
-  setSyncMode('connecting');
+  setSyncMode(userId, 'connecting');
   const client = await createClient(cfg);
-  currentClient = client;
+  state.currentClient = client;
 
   await client.connect();
   await client.mailboxOpen('INBOX');
@@ -193,14 +221,14 @@ async function startIDLE(cfg) {
   if (!client.capabilities.has('IDLE')) {
     console.log('IMAP server does not support IDLE, switching to polling');
     await client.logout();
-    currentClient = null;
-    await startPolling(cfg);
+    state.currentClient = null;
+    await startPolling(userId, cfg);
     return;
   }
 
-  setSyncMode('idle');
-  if (cronJob) { cronJob.stop(); cronJob = null; }
-  if (recoveryInterval) { clearInterval(recoveryInterval); recoveryInterval = null; }
+  setSyncMode(userId, 'idle');
+  if (state.cronJob) { state.cronJob.stop(); state.cronJob = null; }
+  if (state.recoveryInterval) { clearInterval(state.recoveryInterval); state.recoveryInterval = null; }
 
   let existsDebounce = null;
   let existsFetching = false;
@@ -216,19 +244,20 @@ async function startIDLE(cfg) {
         // Use a fresh connection so the IDLE connection stays dedicated
         fetchClient = await createClient(cfg);
         await fetchClient.connect();
-        const newMsgs = await fetchSinceUID(fetchClient, 'INBOX', lastSeenUID);
+        const newMsgs = await fetchSinceUID(fetchClient, 'INBOX', state.lastSeenUID);
         await fetchClient.logout();
         fetchClient = null;
         for (const parsed of newMsgs) {
-          const id = await storeEmail(parsed, 'INBOX');
+          const id = await storeEmail(userId, parsed, 'INBOX');
           if (id) {
-            queueClassification(id);
-            if (parsed.uid > lastSeenUID) lastSeenUID = parsed.uid;
+            queueClassification(userId, id);
+            if (parsed.uid > state.lastSeenUID) state.lastSeenUID = parsed.uid;
             broadcast('new_email', {
+              userId,
               id, subject: parsed.subject,
               from_name: parsed.from?.value?.[0]?.name || parsed.from?.value?.[0]?.address || 'Unknown'
             });
-            broadcast('stats_update', {});
+            broadcast('stats_update', { userId });
           }
         }
       } catch (e) {
@@ -247,14 +276,14 @@ async function startIDLE(cfg) {
 
   // IDLE renewal every 28 minutes (1,680,000ms) per RFC 2177
   // startIDLE handles logout of currentClient — no need to call idle() here first
-  renewalTimer = setTimeout(async () => {
+  state.renewalTimer = setTimeout(async () => {
     try {
-      await startIDLE(cfg);
+      await startIDLE(userId, cfg);
     } catch (e) {
-      if (checkCircuitBreaker()) {
-        await startPolling(cfg);
+      if (checkCircuitBreaker(userId)) {
+        await startPolling(userId, cfg);
       } else {
-        setTimeout(() => startIDLE(cfg), 5000);
+        setTimeout(() => startIDLE(userId, cfg), 5000);
       }
     }
   }, 1680000);
@@ -262,18 +291,18 @@ async function startIDLE(cfg) {
   try {
     await client.idle();
     // idle() resolves when server ends the IDLE session
-    clearRenewalTimer();
-    await startIDLE(cfg);
+    clearRenewalTimer(userId);
+    await startIDLE(userId, cfg);
   } catch (e) {
-    clearRenewalTimer();
-    currentClient = null;
-    if (checkCircuitBreaker()) {
+    clearRenewalTimer(userId);
+    state.currentClient = null;
+    if (checkCircuitBreaker(userId)) {
       console.log('Circuit breaker tripped — switching to polling');
-      await startPolling(cfg);
+      await startPolling(userId, cfg);
     } else {
-      setSyncMode('reconnecting');
-      const delay = Math.min(5000 * Math.pow(2, idleDropTimes.length - 1), 300000);
-      setTimeout(() => startIDLE(cfg), delay);
+      setSyncMode(userId, 'reconnecting');
+      const delay = Math.min(5000 * Math.pow(2, state.idleDropTimes.length - 1), 300000);
+      setTimeout(() => startIDLE(userId, cfg), delay);
     }
   }
 }
@@ -286,24 +315,31 @@ async function testImap(cfg) {
     await client.logout();
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: e.message };
+    // imapflow's e.message is often a generic "Command failed" — the actual
+    // server reply (e.g. "Invalid credentials (Failure)" / "Application-
+    // specific password required") lives on e.responseText. Prefer that, then
+    // map known patterns to a friendlier hint.
+    const raw = e.responseText || e.authMessage || e.message || 'IMAP connection failed';
+    return { ok: false, error: mapAuthError(cfg.imap_host, raw) };
   }
 }
 
-async function startSync() {
-  const cfg = getConfig();
+async function startSyncForUser(userId) {
+  const cfg = getConfig(userId);
   if (!cfg) {
-    setSyncMode('disconnected');
+    setSyncMode(userId, 'disconnected');
     return;
   }
 
-  try {
-    setSyncMode('connecting');
+  const state = stateFor(userId);
 
-    // Check if we already have emails in DB (restart scenario)
+  try {
+    setSyncMode(userId, 'connecting');
+
+    // Check if we already have emails in DB (restart scenario) — scoped to this user
     const lastEmail = db.prepare(
-      "SELECT MAX(CAST(uid AS INTEGER)) as maxuid FROM emails WHERE folder='INBOX'"
-    ).get();
+      "SELECT MAX(CAST(uid AS INTEGER)) as maxuid FROM emails WHERE folder='INBOX' AND user_id = ?"
+    ).get(userId);
     const priorUID = lastEmail?.maxuid || 0;
 
     const client = await createClient(cfg);
@@ -311,49 +347,50 @@ async function startSync() {
 
     if (priorUID > 0) {
       // Incremental: only fetch emails newer than last known UID — avoids re-scanning on restart
-      lastSeenUID = priorUID;
-      const newMsgs = await fetchSinceUID(client, 'INBOX', lastSeenUID);
+      state.lastSeenUID = priorUID;
+      const newMsgs = await fetchSinceUID(client, 'INBOX', state.lastSeenUID);
       for (const parsed of newMsgs) {
-        const id = await storeEmail(parsed, 'INBOX');
+        const id = await storeEmail(userId, parsed, 'INBOX');
         if (id) {
-          queueClassification(id);
-          if (parsed.uid > lastSeenUID) lastSeenUID = parsed.uid;
+          queueClassification(userId, id);
+          if (parsed.uid > state.lastSeenUID) state.lastSeenUID = parsed.uid;
         }
       }
     } else {
       // First run: full fetch of recent emails
-      await fetchMessages(client, 'INBOX', 200);
+      await fetchMessages(userId, client, 'INBOX', 200);
       const le = db.prepare(
-        "SELECT MAX(CAST(uid AS INTEGER)) as maxuid FROM emails WHERE folder='INBOX'"
-      ).get();
-      if (le?.maxuid) lastSeenUID = le.maxuid;
-      await fetchMessages(client, 'SENT', 100);
+        "SELECT MAX(CAST(uid AS INTEGER)) as maxuid FROM emails WHERE folder='INBOX' AND user_id = ?"
+      ).get(userId);
+      if (le?.maxuid) state.lastSeenUID = le.maxuid;
+      await fetchMessages(userId, client, 'SENT', 100);
     }
 
     await client.logout();
-    broadcast('stats_update', {});
-    await startIDLE(cfg);
+    broadcast('stats_update', { userId });
+    await startIDLE(userId, cfg);
   } catch (e) {
     console.error('IMAP startup error:', e.message);
-    setSyncMode('disconnected');
-    setTimeout(startSync, 30000);
+    setSyncMode(userId, 'disconnected');
+    setTimeout(() => startSyncForUser(userId), 30000);
   }
 }
 
-async function stopSync() {
-  clearRenewalTimer();
-  if (cronJob) { cronJob.stop(); cronJob = null; }
-  if (recoveryInterval) { clearInterval(recoveryInterval); recoveryInterval = null; }
-  if (currentClient) {
-    try { await currentClient.logout(); } catch(e) {}
-    currentClient = null;
+async function stopSyncForUser(userId) {
+  const s = stateFor(userId);
+  if (s.renewalTimer) { clearTimeout(s.renewalTimer); s.renewalTimer = null; }
+  if (s.cronJob) { s.cronJob.stop(); s.cronJob = null; }
+  if (s.recoveryInterval) { clearInterval(s.recoveryInterval); s.recoveryInterval = null; }
+  if (s.currentClient) {
+    try { await s.currentClient.logout(); } catch(e) {}
+    s.currentClient = null;
   }
-  syncMode = 'disconnected';
-  broadcast('sync_status', { mode: 'disconnected', lastSync: new Date().toISOString() });
+  s.syncMode = 'disconnected';
+  broadcast('sync_status', { userId, mode: 'disconnected', lastSync: new Date().toISOString() });
 }
 
-async function flagAsDeleted(uid, folder) {
-  const cfg = getConfig();
+async function flagAsDeleted(userId, uid, folder) {
+  const cfg = getConfig(userId);
   if (!cfg || !uid) return;
   try {
     const client = await createClient(cfg);
@@ -364,8 +401,8 @@ async function flagAsDeleted(uid, folder) {
   } catch(e) {} // silent — local delete still recorded
 }
 
-async function expungeDeleted() {
-  const cfg = getConfig();
+async function expungeDeleted(userId) {
+  const cfg = getConfig(userId);
   if (!cfg) return { ok: false };
   try {
     const client = await createClient(cfg);
@@ -379,4 +416,7 @@ async function expungeDeleted() {
   }
 }
 
-module.exports = { startSync, stopSync, testImap, getSyncMode, setBroadcast, flagAsDeleted, expungeDeleted };
+module.exports = {
+  startSyncForUser, stopSyncForUser, testImap, getSyncMode, setSyncMode,
+  setBroadcast, flagAsDeleted, expungeDeleted
+};

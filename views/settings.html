@@ -4,7 +4,21 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>IntelliMail — Settings</title>
+  <!-- Pre-paint theme: see app.css. Applies dark theme before any CSS so
+       dark-mode users don't get a flash of the default light theme. -->
+  <script>(function(){try{if(localStorage.getItem('im_theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
+  <script>
+  (function () {
+    const token = localStorage.getItem('intellimail_token');
+    if (!token) {
+      fetch('/api/users/any').then(r => r.json()).then(d => {
+        location.href = d.any ? '/login' : '/setup';
+      }).catch(() => { location.href = '/login'; });
+    }
+  })();
+  </script>
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script src="/js/app.js"></script>
   <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="/css/app.css">
@@ -33,6 +47,27 @@
   <!-- Toast -->
   <div id="toast-container"></div>
 
+  <!-- Tab nav -->
+  <div style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:24px;">
+    <button @click="setTab('account')" type="button"
+            :style="(activeTab === 'account'
+              ? 'border-bottom:2px solid var(--accent-cyan);color:var(--text-primary);font-weight:600;'
+              : 'border-bottom:2px solid transparent;color:var(--text-muted);font-weight:500;')
+              + 'padding:10px 16px;background:none;border-top:none;border-left:none;border-right:none;font-size:13px;cursor:pointer;margin-bottom:-1px;'">
+      📧 Email Account
+    </button>
+    <button @click="setTab('providers')" type="button"
+            :style="(activeTab === 'providers'
+              ? 'border-bottom:2px solid var(--accent-cyan);color:var(--text-primary);font-weight:600;'
+              : 'border-bottom:2px solid transparent;color:var(--text-muted);font-weight:500;')
+              + 'padding:10px 16px;background:none;border-top:none;border-left:none;border-right:none;font-size:13px;cursor:pointer;margin-bottom:-1px;'">
+      🧠 AI Providers
+    </button>
+  </div>
+
+  <!-- ── Email Account tab ───────────────────────────────────────────── -->
+  <div x-show="activeTab === 'account'">
+
   <!-- 1. Account Section -->
   <div class="settings-section">
     <h3>👤 Account</h3>
@@ -45,8 +80,17 @@
       <input type="email" x-model="cfg.email" placeholder="you@example.com">
     </div>
     <div class="form-field" style="position:relative;">
-      <label>Password / App Password</label>
-      <input :type="showPassword?'text':'password'" x-model="cfg.password" placeholder="Leave blank to keep existing"
+      <label style="display:flex;align-items:center;gap:8px;">
+        Password / App Password
+        <template x-if="cfg.has_password">
+          <span style="font-size:11px;font-weight:400;color:var(--accent-green);">✓ saved</span>
+        </template>
+        <template x-if="cfg.has_password === false">
+          <span style="font-size:11px;font-weight:400;color:var(--text-muted);">no password saved</span>
+        </template>
+      </label>
+      <input :type="showPassword?'text':'password'" x-model="cfg.password"
+             :placeholder="cfg.has_password ? 'Leave blank to keep existing' : 'Your email password or app password'"
              style="width:100%;background:var(--bg-raised);border:1px solid var(--border);color:var(--text-primary);padding:9px 40px 9px 12px;border-radius:6px;font-size:13px;outline:none;">
       <button @click="showPassword=!showPassword" type="button"
               style="position:absolute;right:10px;bottom:8px;background:none;border:none;color:var(--text-muted);cursor:pointer;">
@@ -109,6 +153,168 @@
          x-text="testResults.smtp?.ok ? '✅ SMTP Ready' : '❌ ' + testResults.smtp?.error"></div>
   </div>
 
+  </div><!-- /Email Account tab (part 1) -->
+
+  <!-- ── AI Providers tab ────────────────────────────────────────────── -->
+  <div x-show="activeTab === 'providers'">
+
+  <!-- 5. AI Providers -->
+  <div class="settings-section">
+    <h3>🧠 AI Providers</h3>
+    <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">
+      Fallback chain for Tier-2 classification and draft regen. Toggle to enable, drag to reorder.
+    </p>
+
+    <!-- Trial-keys banner. Shown only when the server has any default key
+         configured AND the user hasn't saved any of their own keys yet.
+         Once they save even one of their own keys, the trial messaging
+         disappears since they no longer depend on it. -->
+    <template x-if="defaultKeys && defaultKeys.any_default_configured && defaultKeys.active && !hasAnyOwnKey">
+      <div style="margin:0 0 14px;padding:12px 14px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.4);border-radius:6px;font-size:12px;color:var(--text-primary);line-height:1.55;">
+        <div style="font-weight:600;margin-bottom:4px;">⏱ Free trial — default API keys active for today only</div>
+        <div style="color:var(--text-muted);">
+          Our shared API keys work on your signup day only
+          (<span x-text="defaultKeys.hours_remaining"></span> hour<span x-show="defaultKeys.hours_remaining !== 1">s</span> left, expires at midnight UTC).
+          Add at least one of your own NVIDIA / Groq / Gemini / DeepSeek keys before then so AI features keep running tomorrow.
+        </div>
+      </div>
+    </template>
+    <template x-if="defaultKeys && defaultKeys.any_default_configured && !defaultKeys.active && !hasAnyOwnKey">
+      <div style="margin:0 0 14px;padding:12px 14px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.4);border-radius:6px;font-size:12px;color:var(--text-primary);line-height:1.55;">
+        <div style="font-weight:600;margin-bottom:4px;color:var(--accent-red);">⚠ Default API keys have expired</div>
+        <div style="color:var(--text-muted);">
+          The free trial of our shared API keys ended at midnight UTC of your signup day.
+          Add your own key for at least one provider below — until then, AI classification
+          and draft regen will fall back to rules-only output.
+        </div>
+      </div>
+    </template>
+
+    <template x-for="(p, idx) in providerList" :key="p.name">
+      <div draggable="true"
+           @dragstart="dragIdx=idx"
+           @dragover.prevent
+           @drop="reorderProviders(idx)"
+           style="display:grid;grid-template-columns:24px 24px 1fr auto;gap:10px;align-items:center;margin-bottom:10px;padding:10px;background:var(--bg-raised);border:1px solid var(--border);border-radius:6px;">
+        <span style="cursor:grab;color:var(--text-muted);">☰</span>
+        <input type="checkbox" x-model="p.enabled" @change="saveProviderOrder()">
+        <div>
+          <div style="font-weight:600;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span x-text="p.label"></span>
+            <template x-if="p.hasKey">
+              <span style="font-size:11px;font-weight:400;color:var(--accent-green);">✓ saved</span>
+            </template>
+            <template x-if="!p.hasKey">
+              <span style="font-size:11px;font-weight:400;color:var(--text-muted);">no key saved</span>
+            </template>
+            <!-- Health badge driven by router state -->
+            <template x-if="providerHealth[p.name]">
+              <span :style="'font-size:11px;font-weight:500;padding:2px 8px;border-radius:4px;' + healthStyle(providerHealth[p.name].status)" x-text="healthLabel(providerHealth[p.name].status)" :title="providerHealth[p.name].last_error_msg || ''"></span>
+            </template>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:6px;">
+            <div style="flex:1;position:relative;">
+              <input :type="p.showKey?'text':'password'"
+                     :placeholder="p.hasKey ? 'Leave blank to keep existing key' : (p.name.toUpperCase() + ' API key')"
+                     x-model="p.apiKey"
+                     autocomplete="off"
+                     style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text-primary);padding:6px 32px 6px 10px;border-radius:4px;font-size:12px;">
+              <button @click="p.showKey = !p.showKey" type="button"
+                      :title="p.apiKey ? 'Show/hide what you are typing' : 'No key to show (saved keys are never displayed)'"
+                      style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-muted);cursor:pointer;padding:2px 4px;font-size:14px;">
+                <span x-text="p.showKey?'🙈':'👁'"></span>
+              </button>
+            </div>
+            <input type="text" placeholder="Model" x-model="p.model"
+                   style="width:220px;background:var(--bg);border:1px solid var(--border);color:var(--text-primary);padding:6px 10px;border-radius:4px;font-size:12px;">
+          </div>
+          <div style="display:flex;gap:8px;margin-top:6px;align-items:center;">
+            <label style="font-size:11px;color:var(--text-muted);min-width:30px;">RPM</label>
+            <input type="number" min="1" x-model.number="p.rpm"
+                   :placeholder="'default ' + (p.defaultRpm ?? '')"
+                   style="width:90px;background:var(--bg);border:1px solid var(--border);color:var(--text-primary);padding:4px 8px;border-radius:4px;font-size:11px;">
+            <label style="font-size:11px;color:var(--text-muted);min-width:30px;margin-left:8px;">RPD</label>
+            <input type="number" min="1" x-model.number="p.rpd"
+                   :placeholder="'default ' + (p.defaultRpd ?? '∞')"
+                   style="width:110px;background:var(--bg);border:1px solid var(--border);color:var(--text-primary);padding:4px 8px;border-radius:4px;font-size:11px;">
+            <span style="font-size:10px;color:var(--text-muted);">(leave blank for default)</span>
+          </div>
+        </div>
+        <button class="action-btn btn-ghost" @click="testProvider(p.name)" :disabled="p.testing"
+                style="font-size:12px;">
+          <span x-show="!p.testing">Test</span>
+          <span x-show="p.testing">…</span>
+        </button>
+      </div>
+    </template>
+
+    <div style="margin-top:14px;padding:10px 12px;background:var(--bg-raised);border:1px solid var(--border);border-radius:6px;font-size:11px;color:var(--text-muted);line-height:1.6;">
+      <div style="font-weight:600;color:var(--text-secondary);margin-bottom:4px;">What RPM &amp; RPD mean</div>
+      <div><b>RPM</b> (Requests Per Minute): caps how many API calls this provider gets in any 60‑second window. Enforced client‑side by a token bucket — if full, the request queues up to 2s (regen) or 30s (classify), then falls through to the next provider.</div>
+      <div style="margin-top:4px;"><b>RPD</b> (Requests Per Day): total allowed calls in 24 h, resets at midnight UTC. Tracked in the local DB. When exhausted, the router skips this provider with <code>skipped_quota</code> and tries the next one.</div>
+      <div style="margin-top:6px;color:var(--text-muted);">Leave blank to use the provider's default ceiling. Free tiers today: Groq ≈ 30/min &amp; ~14 400/day (watch the 12 k TPM cap on 70b); Gemini 2.5 Flash ≈ 10/min &amp; ~500/day; DeepSeek ≈ 60/min &amp; ~10 000/day.</div>
+    </div>
+
+    <div style="margin-top:14px;font-size:12px;color:var(--text-muted);">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
+        <div style="font-weight:600;color:var(--text-secondary);">Today's usage</div>
+        <button @click="loadUsage()" :disabled="usageLoading" class="action-btn btn-ghost" style="font-size:10px;padding:2px 8px;">
+          <span x-show="!usageLoading">↻ Refresh</span>
+          <span x-show="usageLoading">…</span>
+        </button>
+      </div>
+      <template x-for="p in providerList" :key="'usage-'+p.name">
+        <div style="margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">
+            <span style="color:var(--text-primary);text-transform:capitalize;" x-text="p.name"></span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;">
+              <span x-text="(usage[p.name] && usage[p.name].count) || 0"></span>
+              <template x-if="usage[p.name] && usage[p.name].rpd">
+                <span style="color:var(--text-muted);"> / <span x-text="usage[p.name].rpd"></span> <span x-text="'(' + (usage[p.name].rpd_pct || 0) + '%)'" :style="usage[p.name].rpd_pct >= 80 ? 'color:var(--accent-red);' : usage[p.name].rpd_pct >= 50 ? 'color:var(--accent-amber);' : 'color:var(--text-muted);'"></span></span>
+              </template>
+              <template x-if="usage[p.name] && !usage[p.name].rpd">
+                <span style="color:var(--text-muted);"> req (no daily cap)</span>
+              </template>
+            </span>
+          </div>
+          <template x-if="usage[p.name] && usage[p.name].rpd">
+            <div style="height:4px;background:var(--bg);border:1px solid var(--border);border-radius:2px;overflow:hidden;">
+              <div :style="`height:100%;width:${(usage[p.name].rpd_pct || 0)}%;background:${usage[p.name].rpd_pct >= 80 ? 'var(--accent-red)' : usage[p.name].rpd_pct >= 50 ? 'var(--accent-amber)' : 'var(--accent-green)'};transition:width 400ms ease-out;`"></div>
+            </div>
+          </template>
+          <!-- Provider-reported limits (Groq / DeepSeek only — read from x-ratelimit-* response headers) -->
+          <template x-if="usage[p.name] && usage[p.name].observed">
+            <div style="font-size:10px;color:var(--text-muted);margin-top:3px;line-height:1.5;">
+              <span style="color:var(--text-secondary);">reported by <span x-text="p.name"></span>:</span>
+              <template x-if="usage[p.name].observed.rpd_remaining !== null && usage[p.name].observed.rpd_limit !== null">
+                <span style="margin-left:4px;" x-text="usage[p.name].observed.rpd_remaining.toLocaleString() + ' / ' + usage[p.name].observed.rpd_limit.toLocaleString() + ' req remaining'"></span>
+              </template>
+              <template x-if="usage[p.name].observed.tpd_remaining !== null && usage[p.name].observed.tpd_limit !== null">
+                <span style="margin-left:4px;" :style="usage[p.name].observed.tpd_remaining / usage[p.name].observed.tpd_limit < 0.1 ? 'color:var(--accent-red);font-weight:600;' : ''" x-text="'· ' + usage[p.name].observed.tpd_remaining.toLocaleString() + ' / ' + usage[p.name].observed.tpd_limit.toLocaleString() + ' tokens remaining'"></span>
+              </template>
+              <template x-if="usage[p.name].observed.reset_tokens">
+                <span style="margin-left:4px;" x-text="'· tokens reset in ' + usage[p.name].observed.reset_tokens"></span>
+              </template>
+            </div>
+          </template>
+          <!-- Providers that don't expose limits via headers — show a short disclaimer -->
+          <template x-if="usage[p.name] && !usage[p.name].observed && p.name === 'gemini'">
+            <div style="font-size:10px;color:var(--text-muted);margin-top:3px;">documented free-tier: ~500/day, 10/min (API doesn't report live limits)</div>
+          </template>
+        </div>
+      </template>
+    </div>
+
+    <button class="action-btn btn-primary" @click="saveProviders()" style="margin-top:12px;">
+      Save Providers
+    </button>
+  </div>
+
+  </div><!-- /AI Providers tab -->
+
+  <!-- ── Email Account tab (continued) ───────────────────────────────── -->
+  <div x-show="activeTab === 'account'">
+
   <!-- 4. Sync Settings -->
   <div class="settings-section">
     <h3>⟳ Sync Settings</h3>
@@ -129,9 +335,44 @@
     <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">Manage your local email cache and configuration.</p>
 
     <div style="display:flex;flex-direction:column;gap:10px;">
+      <div>
+        <button class="action-btn btn-ghost" @click="reclassifyFallback()"
+                :disabled="reclassifying || fallbackCount === 0 || !anyProviderUsable"
+                :title="!anyProviderUsable ? 'All LLM providers are unavailable — check Settings → AI Providers for invalid keys or rate limits' : ''"
+                style="text-align:left;width:100%;">
+          <span x-show="!reclassifying">🔄 Reclassify with LLM</span>
+          <span x-show="reclassifying">🔄 Reclassifying…</span>
+          <span style="font-size:11px;color:var(--text-muted);margin-left:8px;">
+            <template x-if="!reclassifying && fallbackCount > 0 && anyProviderUsable">
+              <span><span x-text="fallbackCount"></span> emails classified without LLM — re-queue them</span>
+            </template>
+            <template x-if="!reclassifying && fallbackCount > 0 && !anyProviderUsable">
+              <span style="color:var(--accent-red);">⚠ All providers unavailable — fix keys / wait for rate-limit reset</span>
+            </template>
+            <template x-if="!reclassifying && fallbackCount === 0">
+              <span>No fallback-classified emails</span>
+            </template>
+            <template x-if="reclassifying">
+              <span><span x-text="reclassifyDone"></span> / <span x-text="reclassifyTotal"></span> done</span>
+            </template>
+          </span>
+        </button>
+        <!-- Progress bar: shown only while reclassifying -->
+        <template x-if="reclassifying">
+          <div style="margin-top:8px;height:6px;background:var(--bg-raised);border:1px solid var(--border);border-radius:3px;overflow:hidden;">
+            <div :style="`height:100%;width:${reclassifyPct}%;background:var(--accent-cyan);transition:width 500ms ease-out;`"></div>
+          </div>
+        </template>
+      </div>
+
       <button class="action-btn btn-ghost" @click="clearCache()" style="text-align:left;">
         🧹 Clear Email Cache
         <span style="font-size:11px;color:var(--text-muted);margin-left:8px;">Deletes emails + classifications, keeps config</span>
+      </button>
+
+      <button class="action-btn btn-ghost" @click="disconnectMailServer()" style="text-align:left;">
+        🔌 Disconnect Mail Server
+        <span style="font-size:11px;color:var(--text-muted);margin-left:8px;">Stops IMAP sync; optionally permanently deletes trash</span>
       </button>
 
       <button class="action-btn btn-decline" @click="confirmReset=true" style="text-align:left;">
@@ -157,15 +398,17 @@
   <!-- Save Button -->
   <div style="display:flex;gap:10px;margin-top:8px;">
     <a href="/dashboard" class="action-btn btn-ghost" style="text-decoration:none;">← Dashboard</a>
+    <button class="action-btn btn-ghost" @click="logOut()" style="font-size:12px;">🚪 Log out</button>
     <button class="action-btn btn-primary" style="flex:1;" @click="saveSettings()" :disabled="saving">
       <span x-show="!saving">💾 Save Settings</span>
       <span x-show="saving">Saving...</span>
     </button>
   </div>
 
+  </div><!-- /Email Account tab (part 2) -->
+
 </div>
 
-<script src="/js/app.js"></script>
 <script>
 function settingsApp() {
   return {
@@ -175,27 +418,173 @@ function settingsApp() {
       smtp_host:'', smtp_port:587, smtp_tls:false,
       sync_interval:60
     },
+    activeTab: (location.hash === '#providers' || /[?&]firstrun=1/.test(location.search))
+      ? 'providers'
+      : (localStorage.getItem('im_settings_tab') || 'account'),
+    setTab(name) {
+      this.activeTab = name;
+      localStorage.setItem('im_settings_tab', name);
+    },
+    // Default-keys trial state: { active, expires_at, hours_remaining,
+    // any_default_configured }. null until /api/llm/default-keys-status loads.
+    defaultKeys: null,
+    async loadDefaultKeysStatus() {
+      try {
+        const r = await authFetch('/api/llm/default-keys-status');
+        if (r.ok) this.defaultKeys = await r.json();
+      } catch {}
+    },
+    // True once the user has at least one of their own provider keys saved.
+    // Source of truth is each provider's hasKey flag, populated from the
+    // server's has_<provider>_key presence flags in loadProviders(). The
+    // trial / expired banners hide once this is true.
+    get hasAnyOwnKey() {
+      return Array.isArray(this.providerList) && this.providerList.some(p => p.hasKey);
+    },
     showPassword: false,
     saving: false,
     confirmReset: false,
     testing: { imap: false, smtp: false },
     testResults: { imap: null, smtp: null },
+    providerList: [
+      { name: 'nvidia',   label: 'NVIDIA',           enabled: true, apiKey: '', hasKey: false, showKey: false, model: 'qwen/qwen3.5-122b-a10b',     rpm: '', rpd: '', defaultRpm: null, defaultRpd: null, testing: false },
+      { name: 'groq',     label: 'Groq',             enabled: true, apiKey: '', hasKey: false, showKey: false, model: 'llama-3.3-70b-versatile',     rpm: '', rpd: '', defaultRpm: null, defaultRpd: null, testing: false },
+      { name: 'gemini',   label: 'Gemini Flash',     enabled: true, apiKey: '', hasKey: false, showKey: false, model: 'gemini-flash-latest',         rpm: '', rpd: '', defaultRpm: null, defaultRpd: null, testing: false },
+      { name: 'deepseek', label: 'DeepSeek',         enabled: true, apiKey: '', hasKey: false, showKey: false, model: 'deepseek-chat',               rpm: '', rpd: '', defaultRpm: null, defaultRpd: null, testing: false }
+    ],
+    usage: {},
+    usageLoading: false,
+    dragIdx: null,
+    fallbackCount: 0,
+    providerHealth: {},
+    anyProviderUsable: true,
+    healthLabel(s) {
+      const m = {
+        ok: '✓ healthy', rate_limited: '⚠ rate-limited', service_busy: '⚠ service busy',
+        invalid_key: '✕ invalid key', breaker_open: '⚠ breaker open',
+        http_5xx: '⚠ 5xx', timeout: '⚠ timeout', network: '⚠ network',
+        invalid_json: '⚠ parse error', unknown: '· untested'
+      };
+      return m[s] || '';
+    },
+    healthStyle(s) {
+      if (s === 'ok') return 'background:rgba(16,185,129,0.15);color:var(--accent-green);';
+      if (s === 'rate_limited' || s === 'breaker_open' || s === 'service_busy')
+        return 'background:rgba(245,158,11,0.15);color:var(--accent-amber);';
+      if (s === 'invalid_key' || s === 'http_5xx' || s === 'timeout' || s === 'network' || s === 'invalid_json')
+        return 'background:rgba(239,68,68,0.15);color:var(--accent-red);';
+      if (s === 'unknown') return 'background:rgba(148,163,184,0.15);color:var(--text-muted);';
+      return 'display:none;';
+    },
+    reclassifying: false,
+    reclassifyTotal: 0,
+    reclassifyDone: 0,
+    get reclassifyPct() {
+      return this.reclassifyTotal > 0
+        ? Math.round((this.reclassifyDone / this.reclassifyTotal) * 100)
+        : 0;
+    },
+    _reclassifyTimer: null,
 
     async init() {
       // Load settings from server (source of truth)
       try {
-        const res = await fetch('/api/settings');
+        const res = await authFetch('/api/settings');
         if (res.ok) {
           const data = await res.json();
           this.cfg = { ...this.cfg, ...data };
         }
       } catch(e) {}
+      await this.loadProviders();
+      await this.loadLlmStatus();
+      await this.loadDefaultKeysStatus();
+    },
+
+    async loadLlmStatus() {
+      try {
+        const res = await authFetch('/api/llm/status');
+        if (res.ok) {
+          const d = await res.json();
+          this.fallbackCount = d.fallback_count || 0;
+          this.providerHealth = d.provider_health || {};
+          this.anyProviderUsable = d.any_provider_usable !== false;
+        }
+      } catch {}
+    },
+
+    async reclassifyFallback() {
+      if (this.fallbackCount === 0) return;
+      const ok = await window.confirmModal(
+        'Reclassify ' + this.fallbackCount + ' emails?',
+        'These emails were classified without LLM (fallback). Running them again through Groq / Gemini may take several minutes depending on your rate limits. Existing classifications will be replaced.',
+        { confirmLabel: 'Reclassify' }
+      );
+      if (!ok) return;
+      this.reclassifyTotal = this.fallbackCount;
+      this.reclassifyDone = 0;
+      this.reclassifying = true;
+      try {
+        const res = await authFetch('/api/classifications/reclassify-fallback', { method: 'POST' });
+        const data = await res.json();
+        if (res.ok) {
+          this.reclassifyTotal = data.queued;
+          this._pollReclassifyProgress();
+        } else if (data.error === 'no_llm_configured') {
+          showToast('error', '❌ Configure an NVIDIA, Groq, Gemini, or DeepSeek key first');
+          this.reclassifying = false;
+        } else {
+          showToast('error', '❌ ' + (data.error || 'Reclassify failed'));
+          this.reclassifying = false;
+        }
+      } catch {
+        showToast('error', '❌ Network error');
+        this.reclassifying = false;
+      }
+    },
+
+    _pollReclassifyProgress() {
+      // Poll /api/llm/status every 2s — as the classifier processes the queue,
+      // fallback_count drops. Progress = total - remaining.
+      const tick = async () => {
+        try {
+          const res = await authFetch('/api/llm/status');
+          if (res.ok) {
+            const d = await res.json();
+            this.providerHealth = d.provider_health || {};
+            this.anyProviderUsable = d.any_provider_usable !== false;
+            const remaining = d.fallback_count || 0;
+            this.reclassifyDone = Math.max(0, this.reclassifyTotal - remaining);
+
+            // Abort early if all providers went unusable — no point burning
+            // more cycles if every classification will just re-land in fallback.
+            if (!this.anyProviderUsable && remaining > 0) {
+              this.reclassifying = false;
+              this.fallbackCount = remaining;
+              showToast('error', '❌ Reclassify stopped — all LLM providers unavailable');
+              clearInterval(this._reclassifyTimer);
+              this._reclassifyTimer = null;
+              return;
+            }
+
+            if (remaining === 0 || this.reclassifyDone >= this.reclassifyTotal) {
+              this.reclassifying = false;
+              this.fallbackCount = 0;
+              showToast('success', '✓ Reclassification complete (' + this.reclassifyTotal + ' emails)');
+              clearInterval(this._reclassifyTimer);
+              this._reclassifyTimer = null;
+              return;
+            }
+          }
+        } catch {}
+      };
+      tick();
+      this._reclassifyTimer = setInterval(tick, 2000);
     },
 
     async saveSettings() {
       this.saving = true;
       try {
-        const res = await fetch('/api/settings/save', {
+        const res = await authFetch('/api/settings/save', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(this.cfg)
@@ -210,6 +599,156 @@ function settingsApp() {
         showToast('error', '❌ Network error');
       } finally {
         this.saving = false;
+      }
+    },
+
+    async logOut() {
+      const ok = await window.confirmModal(
+        'Log out of IntelliMail?',
+        'You\'ll need to sign in again. Your IMAP sync keeps running in the background.',
+        { confirmLabel: 'Log out', danger: true }
+      );
+      if (!ok) return;
+      localStorage.removeItem('intellimail_token');
+      location.href = '/login';
+    },
+
+    async disconnectMailServer() {
+      try {
+        // Step 1: check pending deletes
+        const check = await authFetch('/api/account/logout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ confirmed: false })
+        });
+        const data = await check.json();
+
+        let expunge = false;
+        if (data.pendingDeletes > 0) {
+          expunge = await window.confirmModal(
+            `${data.pendingDeletes} email${data.pendingDeletes === 1 ? '' : 's'} in Trash`,
+            'Permanently delete them on the server before disconnecting? Choose Delete to expunge, or Cancel to keep them in Trash (you can restore later).',
+            { confirmLabel: 'Delete permanently', danger: true }
+          );
+        }
+        const confirmed = await window.confirmModal(
+          'Disconnect mail server?',
+          'Stops IMAP sync for your account. No new emails will arrive until you reconnect.',
+          { confirmLabel: 'Disconnect', danger: true }
+        );
+        if (!confirmed) return;
+
+        // Step 2: stop sync (optionally expunge)
+        await authFetch('/api/account/logout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ confirmed: true, expunge })
+        });
+        showToast('success', '✓ Mail server disconnected');
+      } catch(e) {
+        showToast('error', '❌ Disconnect failed');
+      }
+    },
+
+    async loadProviders() {
+      try {
+        const res = await authFetch('/api/settings');
+        if (!res.ok) return;
+        const cfg = await res.json();
+        const order   = (cfg.llm_provider_order    || 'nvidia,groq,gemini,deepseek').split(',');
+        const enabled = new Set((cfg.llm_providers_enabled || 'nvidia,groq,gemini,deepseek').split(','));
+        const byName = Object.fromEntries(this.providerList.map(p => [p.name, p]));
+        const defaults = cfg.limits_defaults || {};
+        // API keys are NEVER round-tripped to the client. We only know
+        // whether each is saved (has_*_key). The input stays empty so the
+        // user can type a replacement; the badge reflects persisted state.
+        if (byName.nvidia)   { byName.nvidia.apiKey   = ''; byName.nvidia.hasKey   = !!cfg.has_nvidia_key;   byName.nvidia.model   = cfg.nvidia_model   || byName.nvidia.model; }
+        if (byName.groq)     { byName.groq.apiKey     = ''; byName.groq.hasKey     = !!cfg.has_groq_key;     byName.groq.model     = cfg.groq_model     || byName.groq.model; }
+        if (byName.gemini)   { byName.gemini.apiKey   = ''; byName.gemini.hasKey   = !!cfg.has_gemini_key;   byName.gemini.model   = cfg.gemini_model   || byName.gemini.model; }
+        if (byName.deepseek) { byName.deepseek.apiKey = ''; byName.deepseek.hasKey = !!cfg.has_deepseek_key; byName.deepseek.model = cfg.deepseek_model || byName.deepseek.model; }
+        for (const p of this.providerList) {
+          p.rpm = cfg[p.name + '_rpm'] ?? '';
+          p.rpd = cfg[p.name + '_rpd'] ?? '';
+          p.defaultRpm = defaults[p.name]?.rpm ?? null;
+          p.defaultRpd = defaults[p.name]?.rpd ?? null;
+        }
+        this.providerList = order.map(n => byName[n]).filter(Boolean);
+        for (const p of this.providerList) p.enabled = enabled.has(p.name);
+        await this.loadUsage();
+      } catch {}
+    },
+
+    async loadUsage() {
+      this.usageLoading = true;
+      try {
+        const u = await authFetch('/api/providers/usage');
+        if (u.ok) this.usage = await u.json();
+      } catch {
+      } finally {
+        this.usageLoading = false;
+      }
+    },
+
+    reorderProviders(toIdx) {
+      if (this.dragIdx === null || this.dragIdx === toIdx) return;
+      const moved = this.providerList.splice(this.dragIdx, 1)[0];
+      this.providerList.splice(toIdx, 0, moved);
+      this.dragIdx = null;
+      this.saveProviderOrder();
+    },
+
+    async saveProviderOrder() {
+      await authFetch('/api/settings/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          llm_provider_order:    this.providerList.map(p => p.name).join(','),
+          llm_providers_enabled: this.providerList.filter(p => p.enabled).map(p => p.name).join(',')
+        })
+      });
+    },
+
+    async saveProviders() {
+      const payload = {
+        llm_provider_order:    this.providerList.map(p => p.name).join(','),
+        llm_providers_enabled: this.providerList.filter(p => p.enabled).map(p => p.name).join(',')
+      };
+      for (const p of this.providerList) {
+        if (p.name === 'nvidia')   { payload.nvidia_api_key   = p.apiKey; payload.nvidia_model   = p.model; }
+        if (p.name === 'groq')     { payload.groq_api_key     = p.apiKey; payload.groq_model     = p.model; }
+        if (p.name === 'gemini')   { payload.gemini_api_key   = p.apiKey; payload.gemini_model   = p.model; }
+        if (p.name === 'deepseek') { payload.deepseek_api_key = p.apiKey; payload.deepseek_model = p.model; }
+        payload[p.name + '_rpm'] = p.rpm === '' ? null : p.rpm;
+        payload[p.name + '_rpd'] = p.rpd === '' ? null : p.rpd;
+      }
+      try {
+        const res = await authFetch('/api/settings/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        showToast(data.ok ? 'success' : 'error', data.ok ? '✓ Providers saved' : '❌ Save failed');
+        if (data.ok) await this.loadProviders();
+      } catch {
+        showToast('error', '❌ Network error saving providers');
+      }
+    },
+
+    async testProvider(name) {
+      const p = this.providerList.find(x => x.name === name);
+      if (!p) return;
+      p.testing = true;
+      try {
+        await this.saveProviders();
+        const res = await authFetch(`/api/providers/${name}/test`, { method: 'POST' });
+        const data = await res.json();
+        showToast(data.ok ? 'success' : 'error',
+          data.ok ? `✓ ${name}: ${data.category}` : `❌ ${name}: ${data.error || 'failed'}`);
+      } catch {
+        showToast('error', `❌ ${name}: network error`);
+      } finally {
+        p.testing = false;
       }
     },
 
@@ -228,7 +767,7 @@ function settingsApp() {
           password: this.cfg.password,
           email: this.cfg.email,
         });
-        const res = await fetch('/api/account/test?' + params);
+        const res = await authFetch('/api/account/test?' + params);
         const data = await res.json();
         this.testResults.imap = data.imap;
       } catch(e) {
@@ -253,7 +792,7 @@ function settingsApp() {
           password: this.cfg.password,
           email: this.cfg.email,
         });
-        const res = await fetch('/api/account/test?' + params);
+        const res = await authFetch('/api/account/test?' + params);
         const data = await res.json();
         this.testResults.smtp = data.smtp;
       } catch(e) {
@@ -266,7 +805,7 @@ function settingsApp() {
     async clearCache() {
       if (!confirm('Delete all emails and classifications? Config will be kept.')) return;
       try {
-        const res = await fetch('/api/account/reset', { method: 'POST' });
+        const res = await authFetch('/api/account/reset', { method: 'POST' });
         // Reset redirects to /setup, but we want to stay — intercept
         showToast('info', 'Cache cleared — reloading...');
         setTimeout(() => location.reload(), 1500);
@@ -277,6 +816,24 @@ function settingsApp() {
   };
 }
 </script>
+
+<!-- Shared confirmation modal -->
+<div x-data="confirmModalComponent()" @keydown.escape.window="open && cancel()">
+  <!-- Backdrop -->
+  <div x-show="open" x-transition.opacity @click="cancel()" x-cloak
+       style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.55);backdrop-filter:blur(4px);z-index:10000;"></div>
+  <!-- Dialog -->
+  <div x-show="open" x-transition @click.stop x-cloak
+       style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:50vw;max-width:600px;min-width:320px;background:var(--bg-raised);border:1px solid var(--border);border-radius:12px;padding:24px 28px;box-shadow:0 24px 60px rgba(0,0,0,0.55);z-index:10001;">
+    <h3 x-text="title" style="margin:0 0 10px;font-family:'Syne',sans-serif;font-size:17px;font-weight:700;color:var(--text-primary);letter-spacing:-0.01em;"></h3>
+    <p x-text="message" style="margin:0 0 22px;font-size:13px;color:var(--text-muted);line-height:1.6;"></p>
+    <div style="display:flex;justify-content:flex-end;gap:10px;">
+      <button @click="cancel()" class="action-btn btn-ghost" style="min-width:96px;">Cancel</button>
+      <button @click="confirm()" class="action-btn" :class="danger ? 'btn-decline' : 'btn-primary'" x-text="confirmLabel" style="min-width:112px;"></button>
+    </div>
+  </div>
+</div>
+<style>[x-cloak] { display: none !important; }</style>
 
 </body>
 </html>

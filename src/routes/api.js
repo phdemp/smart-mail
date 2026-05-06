@@ -3,8 +3,14 @@ const router = express.Router();
 const { db, getConfig, saveConfig, getStats } = require('../db');
 const { queueClassification, classifyEmail, generateDraft } = require('../classifier');
 const { sendEmail, testSmtp } = require('../smtp');
-const { testImap, getSyncMode, startSync, stopSync, flagAsDeleted, expungeDeleted } = require('../imap');
-const LOCAL_API = 'http://localhost:8765';
+const { testImap, getSyncMode, startSyncForUser, stopSyncForUser, flagAsDeleted, expungeDeleted } = require('../imap');
+const { normalizePassword } = require('../util/credentials');
+
+// ─── Public endpoints (no auth required) ────────────────────────────────────
+router.get('/api/users/any', (req, res) => {
+  const n = db.prepare('SELECT COUNT(*) as n FROM users').get().n;
+  res.json({ any: n > 0 });
+});
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -72,21 +78,35 @@ router.post('/api/account/save', async (req, res) => {
     email: req.body.email,
     imap_host: req.body.imap_host,
     imap_port: parseInt(req.body.imap_port) || 993,
-    imap_tls: req.body.imap_tls === true || req.body.imap_tls === 'on' || req.body.imap_tls === '1' ? 1 : 0,
+    imap_tls: (req.body.imap_tls === true || req.body.imap_tls === 1 || req.body.imap_tls === 'on' || req.body.imap_tls === '1') ? 1 : 0,
     smtp_host: req.body.smtp_host,
     smtp_port: parseInt(req.body.smtp_port) || 587,
-    smtp_tls: req.body.smtp_tls === true || req.body.smtp_tls === 'on' || req.body.smtp_tls === '1' ? 1 : 0,
+    smtp_tls: (req.body.smtp_tls === true || req.body.smtp_tls === 1 || req.body.smtp_tls === 'on' || req.body.smtp_tls === '1') ? 1 : 0,
     username: req.body.username || req.body.email,
     password: req.body.password,
     sync_interval: parseInt(req.body.sync_interval) || 60
   };
   try {
-    saveConfig(cfg);
-    // Clear demo data and restart sync
-    db.prepare("DELETE FROM emails").run();
-    db.prepare("DELETE FROM classifications").run();
-    db.prepare("DELETE FROM drafts").run();
-    startSync();
+    // Update-my-account path — scoped to the current user.
+    const existing = db.prepare('SELECT id FROM account_config WHERE user_id = ?').get(req.user.id);
+    if (existing) {
+      db.prepare(`UPDATE account_config SET display_name=?, email=?, imap_host=?, imap_port=?, imap_tls=?,
+        smtp_host=?, smtp_port=?, smtp_tls=?, username=?, password=?, sync_interval=?
+        WHERE user_id=?`).run(cfg.display_name, cfg.email, cfg.imap_host, cfg.imap_port, cfg.imap_tls,
+                               cfg.smtp_host, cfg.smtp_port, cfg.smtp_tls, cfg.username, cfg.password,
+                               cfg.sync_interval || 60, req.user.id);
+    } else {
+      db.prepare(`INSERT INTO account_config (user_id, display_name, email, imap_host, imap_port, imap_tls,
+        smtp_host, smtp_port, smtp_tls, username, password, sync_interval)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(req.user.id, cfg.display_name, cfg.email, cfg.imap_host,
+                               cfg.imap_port, cfg.imap_tls, cfg.smtp_host, cfg.smtp_port, cfg.smtp_tls,
+                               cfg.username, cfg.password, cfg.sync_interval || 60);
+    }
+    // Clear current user's demo/placeholder data and restart sync
+    db.prepare('DELETE FROM emails WHERE user_id = ?').run(req.user.id);
+    db.prepare('DELETE FROM classifications WHERE user_id = ?').run(req.user.id);
+    db.prepare('DELETE FROM drafts WHERE user_id = ?').run(req.user.id);
+    startSyncForUser(req.user.id);
     res.redirect('/dashboard');
   } catch (e) {
     res.redirect('/setup?error=' + encodeURIComponent(e.message));
@@ -94,12 +114,18 @@ router.post('/api/account/save', async (req, res) => {
 });
 
 function buildCfg(q) {
+  // Strip whitespace from the password server-side. For Gmail hosts we strip
+  // ALL internal whitespace too (matches Google's actual app-password format —
+  // users paste the spaced "abcd efgh ijkl mnop" version Google displays).
+  // Use the IMAP host as the basis for "is this gmail" since it's the host
+  // we'll authenticate against first.
+  const password = normalizePassword(q.imap_host || q.smtp_host, q.password);
   return {
     imap_host: q.imap_host, imap_port: parseInt(q.imap_port) || 993,
     imap_tls: q.imap_tls === '1' ? 1 : 0,
     smtp_host: q.smtp_host, smtp_port: parseInt(q.smtp_port) || 587,
     smtp_tls: q.smtp_tls === '1' ? 1 : 0,
-    username: q.username || q.email, password: q.password,
+    username: q.username || q.email, password,
     display_name: 'Test', email: q.email
   };
 }
@@ -132,37 +158,69 @@ router.get('/api/account/test-smtp', async (req, res) => {
 
 router.get('/api/account/test', async (req, res) => {
   const cfg = buildCfg(req.query);
-  const results = { imap: null, smtp: null, ai: null };
+  const results = { imap: null, smtp: null };
 
   try { results.imap = await testImap(cfg); } catch(e) { results.imap = { ok: false, error: e.message }; }
   try { results.smtp = await testSmtp(cfg); } catch(e) { results.smtp = { ok: false, error: e.message }; }
 
-  // Test local AI classifier
-  try {
-    const r = await fetch(`${LOCAL_API}/classify`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ subject: 'ping', from_address: 'test@test.com', preview: 'test' })
-    });
-    results.ai = r.ok ? { ok: true, model: (await r.json()).model } : { ok: false, error: `HTTP ${r.status}` };
-  } catch(e) { results.ai = { ok: false, error: e.message }; }
-
   res.json(results);
+});
+
+router.post('/api/providers/:name/test', async (req, res) => {
+  const { name } = req.params;
+  const allowed = new Set(['nvidia', 'groq', 'gemini', 'deepseek']);
+  if (!allowed.has(name)) return res.status(400).json({ ok: false, error: 'Unknown provider' });
+
+  const { resolveConfig } = require('../llm/config');
+  // Scoped to the logged-in user — reads THEIR saved keys, not "first row".
+  const cfg = resolveConfig(req.user.id);
+  const providers = {
+    nvidia:   require('../llm/providers/nvidia'),
+    groq:     require('../llm/providers/groq'),
+    gemini:   require('../llm/providers/gemini'),
+    deepseek: require('../llm/providers/deepseek')
+  };
+  const provider = providers[name];
+  const sampleEmail = {
+    from_address: 'ping@intellimail.local',
+    from_name:    'IntelliMail Test',
+    subject:      'Test classification — please reply',
+    body_text:    'This is a synthetic test email used to verify the provider responds correctly.'
+  };
+  const keyLen = (cfg.keys[name] || '').length;
+  console.log(`[PROVIDER TEST] user=${req.user.id} provider=${name} model=${cfg.models[name]} key_len=${keyLen}`);
+  try {
+    const result = await provider.call(sampleEmail, { mode: 'full' }, {
+      apiKey: cfg.keys[name],
+      model:  cfg.models[name]
+    });
+    if (result && result._observedLimits) {
+      const llm = require('../llm');
+      llm.router.setObservedLimits(req.user.id, name, result._observedLimits);
+    }
+    console.log(`[PROVIDER TEST] OK user=${req.user.id} provider=${name} category=${result.category}`);
+    res.json({ ok: true, category: result.category, provider: name });
+  } catch (e) {
+    console.log(`[PROVIDER TEST] FAIL user=${req.user.id} provider=${name} status=${e.status || '?'} msg=${e.message}`);
+    res.status(200).json({ ok: false, error: e.message, status: e.status || null });
+  }
 });
 
 router.post('/api/account/logout', async (req, res) => {
   try {
-    const pendingDeletes = db.prepare('SELECT COUNT(*) as c FROM emails WHERE is_deleted = 1').get().c;
+    const pendingDeletes = db.prepare(
+      'SELECT COUNT(*) as c FROM emails WHERE is_deleted = 1 AND user_id = ?'
+    ).get(req.user.id).c;
     if (!req.body.confirmed) {
       return res.json({ ok: false, pendingDeletes });
     }
     if (req.body.expunge && pendingDeletes > 0) {
-      await expungeDeleted();
-      db.prepare('DELETE FROM emails WHERE is_deleted = 1').run();
-      db.prepare("DELETE FROM classifications WHERE email_id NOT IN (SELECT id FROM emails)").run();
-      db.prepare("DELETE FROM drafts WHERE email_id NOT IN (SELECT id FROM emails)").run();
+      await expungeDeleted(req.user.id);
+      db.prepare('DELETE FROM emails WHERE is_deleted = 1 AND user_id = ?').run(req.user.id);
+      db.prepare("DELETE FROM classifications WHERE email_id NOT IN (SELECT id FROM emails) AND user_id = ?").run(req.user.id);
+      db.prepare("DELETE FROM drafts WHERE email_id NOT IN (SELECT id FROM emails) AND user_id = ?").run(req.user.id);
     }
-    await stopSync();
+    await stopSyncForUser(req.user.id);
     res.json({ ok: true });
   } catch(e) {
     res.status(500).json({ error: e.message });
@@ -171,11 +229,12 @@ router.post('/api/account/logout', async (req, res) => {
 
 router.post('/api/account/reset', (req, res) => {
   try {
-    db.prepare("DELETE FROM emails").run();
-    db.prepare("DELETE FROM classifications").run();
-    db.prepare("DELETE FROM drafts").run();
-    db.prepare("DELETE FROM sync_log").run();
-    db.prepare("DELETE FROM account_config").run();
+    db.prepare('DELETE FROM emails WHERE user_id = ?').run(req.user.id);
+    db.prepare('DELETE FROM classifications WHERE user_id = ?').run(req.user.id);
+    db.prepare('DELETE FROM drafts WHERE user_id = ?').run(req.user.id);
+    db.prepare('DELETE FROM sync_log WHERE user_id = ?').run(req.user.id);
+    db.prepare('DELETE FROM account_config WHERE user_id = ?').run(req.user.id);
+    db.prepare('DELETE FROM users WHERE id = ?').run(req.user.id);
     res.redirect('/setup');
   } catch(e) {
     res.status(500).json({ error: e.message });
@@ -185,21 +244,27 @@ router.post('/api/account/reset', (req, res) => {
 // ─── Stats ───────────────────────────────────────────────────────────────────
 
 router.get('/api/stats', (req, res) => {
-  res.json(getStats());
+  res.json(getStats(req.user.id));
 });
 
 // ─── Sync ────────────────────────────────────────────────────────────────────
 
 router.post('/api/sync/now', async (req, res) => {
-  startSync();
+  startSyncForUser(req.user.id);
   res.json({ ok: true, message: 'Sync triggered' });
 });
 
 router.get('/api/sync/status', (req, res) => {
-  const mode = getSyncMode();
-  const lastLog = db.prepare("SELECT * FROM sync_log ORDER BY synced_at DESC LIMIT 1").get();
-  const inboxCount = db.prepare("SELECT COUNT(*) as c FROM emails WHERE folder='INBOX'").get().c;
-  const sentCount = db.prepare("SELECT COUNT(*) as c FROM emails WHERE folder='SENT'").get().c;
+  const mode = getSyncMode(req.user.id);
+  const lastLog = db.prepare(
+    "SELECT * FROM sync_log WHERE user_id = ? ORDER BY synced_at DESC LIMIT 1"
+  ).get(req.user.id);
+  const inboxCount = db.prepare(
+    "SELECT COUNT(*) as c FROM emails WHERE folder='INBOX' AND user_id = ?"
+  ).get(req.user.id).c;
+  const sentCount = db.prepare(
+    "SELECT COUNT(*) as c FROM emails WHERE folder='SENT' AND user_id = ?"
+  ).get(req.user.id).c;
 
   const modeIcon = mode === 'idle' ? '🟢' : mode === 'polling' ? '🟡' : mode === 'reconnecting' ? '⟳' : mode === 'demo' ? '📧' : '✕';
   const modeLabel = mode === 'idle' ? 'Live' : mode === 'polling' ? 'Polling (60s)' : mode === 'reconnecting' ? 'Reconnecting...' : mode === 'demo' ? 'Demo Mode' : 'Disconnected';
@@ -236,6 +301,9 @@ router.get('/api/emails', (req, res) => {
     ? "WHERE e.is_deleted = 1"
     : "WHERE e.is_archived = 0 AND e.is_deleted = 0";
   const params = [];
+
+  whereClause += " AND e.user_id = ?";
+  params.push(req.user.id);
 
   if (folder && folder !== 'all') {
     whereClause += " AND e.folder = ?";
@@ -347,14 +415,14 @@ router.get('/api/emails', (req, res) => {
 // ─── Email Detail ─────────────────────────────────────────────────────────────
 
 router.get('/api/emails/:id', async (req, res) => {
-  const email = db.prepare('SELECT * FROM emails WHERE id = ?').get(req.params.id);
-  if (!email) return res.send('<div style="padding:48px;text-align:center;color:var(--text-muted);">Email not found</div>');
+  const email = db.prepare('SELECT * FROM emails WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+  if (!email) return res.status(404).send('<div style="padding:48px;text-align:center;color:var(--text-muted);">Email not found</div>');
 
-  const cls = db.prepare('SELECT * FROM classifications WHERE email_id = ?').get(email.id);
-  const draft = db.prepare('SELECT * FROM drafts WHERE email_id = ? ORDER BY id DESC LIMIT 1').get(email.id);
+  const cls = db.prepare('SELECT * FROM classifications WHERE email_id = ? AND user_id = ?').get(email.id, req.user.id);
+  const draft = db.prepare('SELECT * FROM drafts WHERE email_id = ? AND user_id = ? ORDER BY id DESC LIMIT 1').get(email.id, req.user.id);
 
   // Mark as read
-  db.prepare('UPDATE emails SET is_read = 1 WHERE id = ?').run(email.id);
+  db.prepare('UPDATE emails SET is_read = 1 WHERE id = ? AND user_id = ?').run(email.id, req.user.id);
 
   const cat = cls?.category || 'other';
   const urg = cls?.urgency || 'normal';
@@ -388,18 +456,15 @@ router.get('/api/emails/:id', async (req, res) => {
   // Action zone based on category
   const actionZone = renderActionZone(cat, email, cls, extracted);
 
-  // Draft editor — generate on first open if empty
+  // Draft editor — generate on first open if empty.
+  // The `source` column tracks provenance ('template' | 'llm' | 'user' | null).
+  // The client auto-regenerates in-place when source='template' on open, so the
+  // server-side path here only needs to handle genuinely empty bodies.
   let draftBody = draft?.body || cls?.draft_reply || '';
   const draftTone = draft?.tone || cls?.suggested_tone || 'professional';
   const draftSubject = draft?.subject || 'Re: ' + email.subject;
   const draftTo = draft?.to_address || email.from_address;
-
-  if (!draftBody && cls && !['fyi', 'other'].includes(cls.category)) {
-    draftBody = await generateDraft(email.id);
-    if (draftBody && draft) {
-      db.prepare('UPDATE drafts SET body=?, last_edited=CURRENT_TIMESTAMP WHERE email_id=?').run(draftBody, email.id);
-    }
-  }
+  const draftSource = draft?.source || null;
 
   const emailBody = email.body_html
     ? `<iframe srcdoc="${escHtml(email.body_html)}" style="width:100%;min-height:300px;border:none;background:white;border-radius:8px;" sandbox="allow-same-origin"></iframe>`
@@ -478,6 +543,7 @@ router.get('/api/emails/:id', async (req, res) => {
                emailId: '${email.id}',
                initialBody: \`${escHtml(draftBody).replace(/`/g, '\\`')}\`,
                initialTone: '${escHtml(draftTone)}',
+               initialSource: ${JSON.stringify(draftSource)},
                toAddress: '${escHtml(draftTo)}',
                subject: '${escHtml(draftSubject)}'
              })">
@@ -803,38 +869,49 @@ function renderActionZone(cat, email, cls, extracted) {
 // ─── Email Actions ────────────────────────────────────────────────────────────
 
 router.post('/api/emails/:id/read', (req, res) => {
-  db.prepare('UPDATE emails SET is_read = 1 WHERE id = ?').run(req.params.id);
+  const info = db.prepare('UPDATE emails SET is_read = 1 WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id);
+  if (info.changes === 0) return res.status(404).json({ error: 'not_found' });
   res.json({ ok: true });
 });
 
 router.post('/api/emails/:id/delete', async (req, res) => {
-  const email = db.prepare('SELECT uid, folder FROM emails WHERE id = ?').get(req.params.id);
-  if (!email) return res.status(404).json({ error: 'Not found' });
-  db.prepare('UPDATE emails SET is_deleted = 1, is_read = 1 WHERE id = ?').run(req.params.id);
-  flagAsDeleted(email.uid, email.folder || 'INBOX').catch(() => {});
+  const email = db.prepare('SELECT uid, folder FROM emails WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+  if (!email) return res.status(404).json({ error: 'not_found' });
+  db.prepare('UPDATE emails SET is_deleted = 1, is_read = 1 WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id);
+  flagAsDeleted(req.user.id, email.uid, email.folder || 'INBOX').catch(() => {});
   res.json({ ok: true });
 });
 
 router.post('/api/emails/:id/permanently-delete', async (req, res) => {
-  const email = db.prepare('SELECT uid, folder FROM emails WHERE id = ?').get(req.params.id);
-  if (!email) return res.status(404).json({ error: 'Not found' });
-  await expungeDeleted();
-  db.prepare('DELETE FROM emails WHERE id = ?').run(req.params.id);
-  db.prepare("DELETE FROM classifications WHERE email_id NOT IN (SELECT id FROM emails)").run();
-  db.prepare("DELETE FROM drafts WHERE email_id NOT IN (SELECT id FROM emails)").run();
+  const email = db.prepare('SELECT uid, folder FROM emails WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+  if (!email) return res.status(404).json({ error: 'not_found' });
+  await expungeDeleted(req.user.id);
+  db.prepare('DELETE FROM emails WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id);
+  db.prepare(
+    "DELETE FROM classifications WHERE email_id NOT IN (SELECT id FROM emails) AND user_id = ?"
+  ).run(req.user.id);
+  db.prepare(
+    "DELETE FROM drafts WHERE email_id NOT IN (SELECT id FROM emails) AND user_id = ?"
+  ).run(req.user.id);
   res.json({ ok: true });
 });
 
 // Keep archive as alias for backward compat
 router.post('/api/emails/:id/archive', (req, res) => {
-  db.prepare('UPDATE emails SET is_deleted = 1, is_read = 1 WHERE id = ?').run(req.params.id);
+  const info = db.prepare(
+    'UPDATE emails SET is_deleted = 1, is_read = 1 WHERE id = ? AND user_id = ?'
+  ).run(req.params.id, req.user.id);
+  if (info.changes === 0) return res.status(404).json({ error: 'not_found' });
   res.json({ ok: true });
 });
 
 router.post('/api/emails/:id/star', (req, res) => {
-  const email = db.prepare('SELECT is_starred FROM emails WHERE id = ?').get(req.params.id);
-  if (!email) return res.json({ ok: false });
-  db.prepare('UPDATE emails SET is_starred = ? WHERE id = ?').run(email.is_starred ? 0 : 1, req.params.id);
+  const email = db.prepare(
+    'SELECT is_starred FROM emails WHERE id = ? AND user_id = ?'
+  ).get(req.params.id, req.user.id);
+  if (!email) return res.status(404).json({ ok: false, error: 'not_found' });
+  db.prepare('UPDATE emails SET is_starred = ? WHERE id = ? AND user_id = ?')
+    .run(email.is_starred ? 0 : 1, req.params.id, req.user.id);
   res.json({ ok: true, starred: !email.is_starred });
 });
 
@@ -843,8 +920,14 @@ router.post('/api/emails/:id/reclassify', (req, res) => {
   const validCategories = ['meeting_request','financial','legal','travel','pitch_deck','fyi','rewards_awards','other'];
   if (!validCategories.includes(category)) return res.status(400).json({ error: 'Invalid category' });
 
-  db.prepare('DELETE FROM classifications WHERE email_id = ?').run(req.params.id);
-  queueClassification(parseInt(req.params.id));
+  // Ensure the email belongs to this user before we touch classifications.
+  const email = db.prepare('SELECT id FROM emails WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.user.id);
+  if (!email) return res.status(404).json({ error: 'not_found' });
+
+  db.prepare('DELETE FROM classifications WHERE email_id = ? AND user_id = ?')
+    .run(req.params.id, req.user.id);
+  queueClassification(req.user.id, parseInt(req.params.id));
 
   // Return placeholder while reclassifying
   res.send(`
@@ -859,27 +942,39 @@ router.post('/api/emails/:id/reclassify', (req, res) => {
 // ─── Draft Routes ─────────────────────────────────────────────────────────────
 
 router.get('/api/emails/:id/draft', (req, res) => {
-  const draft = db.prepare('SELECT * FROM drafts WHERE email_id = ? ORDER BY id DESC LIMIT 1').get(req.params.id);
+  // Ensure the parent email is owned by this user.
+  const email = db.prepare('SELECT id FROM emails WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.user.id);
+  if (!email) return res.status(404).json({ error: 'not_found' });
+  const draft = db.prepare(
+    'SELECT * FROM drafts WHERE email_id = ? AND user_id = ? ORDER BY id DESC LIMIT 1'
+  ).get(req.params.id, req.user.id);
   res.json(draft || {});
 });
 
 router.post('/api/emails/:id/draft/save', (req, res) => {
   const { body, tone, subject, to_address } = req.body;
-  const existing = db.prepare('SELECT id FROM drafts WHERE email_id = ?').get(req.params.id);
+  const email = db.prepare('SELECT id FROM emails WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.user.id);
+  if (!email) return res.status(404).json({ error: 'not_found' });
+  const existing = db.prepare('SELECT id FROM drafts WHERE email_id = ? AND user_id = ?')
+    .get(req.params.id, req.user.id);
   if (existing) {
-    db.prepare('UPDATE drafts SET body=?, tone=?, subject=?, to_address=?, last_edited=CURRENT_TIMESTAMP WHERE email_id=?')
-      .run(body, tone, subject, to_address, req.params.id);
+    // User-saved edit — mark source='user' so auto-upgrade never clobbers it.
+    db.prepare('UPDATE drafts SET body=?, tone=?, subject=?, to_address=?, source=?, last_edited=CURRENT_TIMESTAMP WHERE email_id=? AND user_id=?')
+      .run(body, tone, subject, to_address, 'user', req.params.id, req.user.id);
   } else {
-    db.prepare('INSERT INTO drafts (email_id, body, tone, subject, to_address) VALUES (?,?,?,?,?)')
-      .run(req.params.id, body, tone, subject, to_address);
+    db.prepare('INSERT INTO drafts (email_id, user_id, body, tone, subject, to_address, source) VALUES (?,?,?,?,?,?,?)')
+      .run(req.params.id, req.user.id, body, tone, subject, to_address, 'user');
   }
   res.json({ ok: true });
 });
 
 router.post('/api/emails/:id/draft/send', async (req, res) => {
   const { body, tone, subject, to_address } = req.body;
-  const email = db.prepare('SELECT * FROM emails WHERE id = ?').get(req.params.id);
-  if (!email) return res.status(404).json({ error: 'Email not found' });
+  const email = db.prepare('SELECT * FROM emails WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.user.id);
+  if (!email) return res.status(404).json({ error: 'not_found' });
 
   try {
     await sendEmail({
@@ -888,7 +983,8 @@ router.post('/api/emails/:id/draft/send', async (req, res) => {
       body,
       replyToMessageId: email.message_id
     });
-    db.prepare('UPDATE drafts SET sent=1, sent_at=CURRENT_TIMESTAMP WHERE email_id=?').run(req.params.id);
+    db.prepare('UPDATE drafts SET sent=1, sent_at=CURRENT_TIMESTAMP WHERE email_id=? AND user_id=?')
+      .run(req.params.id, req.user.id);
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -896,48 +992,56 @@ router.post('/api/emails/:id/draft/send', async (req, res) => {
 });
 
 router.post('/api/emails/:id/draft/regen', async (req, res) => {
-  const { tone = 'professional', intent } = req.body;
-  const email = db.prepare('SELECT * FROM emails WHERE id = ?').get(req.params.id);
-  const cls = db.prepare('SELECT * FROM classifications WHERE email_id = ?').get(req.params.id);
-  if (!email) return res.status(404).json({ error: 'Email not found' });
+  const { tone = 'professional' } = req.body;
+  const email = db.prepare('SELECT * FROM emails WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.user.id);
+  const cls = db.prepare('SELECT * FROM classifications WHERE email_id = ? AND user_id = ?')
+    .get(req.params.id, req.user.id);
+  if (!email) return res.status(404).json({ error: 'not_found' });
 
+  const llm = require('../llm');
+  const { buildTemplateReply } = require('../llm/templates');
+
+  let draftReply, source, dbSource, warning = null;
   try {
-    const r = await fetch(`${LOCAL_API}/classify`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        subject:      email.subject      || '',
-        from_address: email.from_address || '',
-        from_name:    email.from_name    || '',
-        preview:      (email.body_text   || '').substring(0, 400),
-        email_id:     String(email.id)
-      })
-    });
-    if (!r.ok) throw new Error(`Local API error: ${r.status}`);
-    const result = await r.json();
-    const draftReply = result.draft_reply || cls?.draft_reply || 'Thank you for your email. I will respond shortly.';
-
-    // Save the regenerated draft
-    const existing = db.prepare('SELECT id FROM drafts WHERE email_id = ?').get(req.params.id);
-    if (existing) {
-      db.prepare('UPDATE drafts SET body=?, tone=?, last_edited=CURRENT_TIMESTAMP WHERE email_id=?')
-        .run(draftReply, tone, req.params.id);
+    const routed = await llm.router.classify(email, { mode: 'regen', tone, userId: req.user.id });
+    if (routed && routed.draft_reply) {
+      draftReply = routed.draft_reply;
+      source = routed._provider;    // for the UI toast: 'nvidia' / 'groq' / 'gemini' / 'deepseek'
+      dbSource = 'llm';             // for the drafts.source column
     } else {
-      db.prepare('INSERT INTO drafts (email_id, body, tone, subject, to_address) VALUES (?,?,?,?,?)')
-        .run(req.params.id, draftReply, tone, 'Re: ' + email.subject, email.from_address);
+      draftReply = buildTemplateReply(cls || { category: 'other' }, tone);
+      source = 'template';
+      dbSource = 'template';
+      warning = 'All LLM providers unavailable — showing template reply';
     }
-
-    res.json({ draft_reply: draftReply });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    draftReply = buildTemplateReply(cls || { category: 'other' }, tone);
+    source = 'template';
+    dbSource = 'template';
+    warning = 'LLM provider error — showing template reply';
   }
+
+  const existing = db.prepare('SELECT id FROM drafts WHERE email_id = ? AND user_id = ?')
+    .get(req.params.id, req.user.id);
+  if (existing) {
+    db.prepare('UPDATE drafts SET body=?, tone=?, source=?, last_edited=CURRENT_TIMESTAMP WHERE email_id=? AND user_id=?')
+      .run(draftReply, tone, dbSource, req.params.id, req.user.id);
+  } else {
+    db.prepare('INSERT INTO drafts (email_id, user_id, body, tone, subject, to_address, source) VALUES (?,?,?,?,?,?,?)')
+      .run(req.params.id, req.user.id, draftReply, tone, 'Re: ' + email.subject, email.from_address, dbSource);
+  }
+
+  res.json({ draft_reply: draftReply, source, ...(warning ? { warning } : {}) });
 });
 
 // ─── iCal Generation ─────────────────────────────────────────────────────────
 
 router.get('/api/emails/:id/ical', (req, res) => {
-  const email = db.prepare('SELECT * FROM emails WHERE id = ?').get(req.params.id);
-  const cls = db.prepare('SELECT * FROM classifications WHERE email_id = ?').get(req.params.id);
+  const email = db.prepare('SELECT * FROM emails WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.user.id);
+  const cls = db.prepare('SELECT * FROM classifications WHERE email_id = ? AND user_id = ?')
+    .get(req.params.id, req.user.id);
   if (!email || !cls) return res.status(404).send('Not found');
 
   const data = parsedExtractedData(cls.extracted_data);
@@ -964,50 +1068,294 @@ router.get('/api/emails/:id/ical', (req, res) => {
 // ─── Settings ────────────────────────────────────────────────────────────────
 
 router.get('/api/settings', (req, res) => {
-  const cfg = getConfig();
-  if (!cfg) return res.status(404).json({ error: 'No config found' });
-  res.json(cfg);
+  const cfg = getConfig(req.user.id) || {};
+  const nvidiaProv   = require('../llm/providers/nvidia');
+  const groqProv     = require('../llm/providers/groq');
+  const geminiProv   = require('../llm/providers/gemini');
+  const deepseekProv = require('../llm/providers/deepseek');
+  // IMPORTANT: API keys and the password are never returned to the client.
+  // We expose only presence flags ("has_*"). The Settings UI shows a
+  // "✓ saved" badge when the flag is true; the input stays empty with a
+  // "Leave blank to keep existing" placeholder.
+  const out = {
+    ...cfg,
+    password:         undefined,
+    nvidia_api_key:   '',
+    groq_api_key:     '',
+    gemini_api_key:   '',
+    deepseek_api_key: '',
+    has_password:     !!cfg.password,
+    has_nvidia_key:   !!cfg.nvidia_api_key,
+    has_groq_key:     !!cfg.groq_api_key,
+    has_gemini_key:   !!cfg.gemini_api_key,
+    has_deepseek_key: !!cfg.deepseek_api_key,
+    nvidia_model:           cfg.nvidia_model   || 'qwen/qwen3.5-122b-a10b',
+    groq_model:             cfg.groq_model     || 'llama-3.3-70b-versatile',
+    gemini_model:           cfg.gemini_model   || 'gemini-flash-latest',
+    deepseek_model:         cfg.deepseek_model || 'deepseek-chat',
+    llm_provider_order:     cfg.llm_provider_order    || 'nvidia,groq,gemini,deepseek',
+    llm_providers_enabled:  cfg.llm_providers_enabled || 'nvidia,groq,gemini,deepseek',
+    limits_defaults: {
+      nvidia:   { rpm: nvidiaProv.limits.rpm,   rpd: Number.isFinite(nvidiaProv.limits.rpd)   ? nvidiaProv.limits.rpd   : null },
+      groq:     { rpm: groqProv.limits.rpm,     rpd: Number.isFinite(groqProv.limits.rpd)     ? groqProv.limits.rpd     : null },
+      gemini:   { rpm: geminiProv.limits.rpm,   rpd: Number.isFinite(geminiProv.limits.rpd)   ? geminiProv.limits.rpd   : null },
+      deepseek: { rpm: deepseekProv.limits.rpm, rpd: Number.isFinite(deepseekProv.limits.rpd) ? deepseekProv.limits.rpd : null }
+    }
+  };
+  res.json(out);
 });
 
 router.post('/api/settings/save', async (req, res) => {
-  const existing = getConfig();
-  if (!existing) return res.status(400).json({ error: 'No existing config to update' });
+  const existing = getConfig(req.user.id);
+  if (existing) {
+    const cfg = {
+      ...existing,
+      display_name: req.body.display_name || existing.display_name,
+      email: req.body.email || existing.email,
+      imap_host: req.body.imap_host || existing.imap_host,
+      imap_port: parseInt(req.body.imap_port) || existing.imap_port,
+      imap_tls: (req.body.imap_tls === true || req.body.imap_tls === 1 || req.body.imap_tls === 'on' || req.body.imap_tls === '1') ? 1 : 0,
+      smtp_host: req.body.smtp_host || existing.smtp_host,
+      smtp_port: parseInt(req.body.smtp_port) || existing.smtp_port,
+      smtp_tls: (req.body.smtp_tls === true || req.body.smtp_tls === 1 || req.body.smtp_tls === 'on' || req.body.smtp_tls === '1') ? 1 : 0,
+      username: req.body.username || existing.username,
+      password: req.body.password || existing.password,
+      sync_interval: parseInt(req.body.sync_interval) || existing.sync_interval
+    };
+    db.prepare(`UPDATE account_config SET display_name=?, email=?, imap_host=?, imap_port=?, imap_tls=?,
+      smtp_host=?, smtp_port=?, smtp_tls=?, username=?, password=?, sync_interval=?
+      WHERE user_id=?`).run(cfg.display_name, cfg.email, cfg.imap_host, cfg.imap_port, cfg.imap_tls,
+                             cfg.smtp_host, cfg.smtp_port, cfg.smtp_tls, cfg.username, cfg.password,
+                             cfg.sync_interval || 60, req.user.id);
+  }
 
-  const cfg = {
-    ...existing,
-    display_name: req.body.display_name || existing.display_name,
-    email: req.body.email || existing.email,
-    imap_host: req.body.imap_host || existing.imap_host,
-    imap_port: parseInt(req.body.imap_port) || existing.imap_port,
-    imap_tls: req.body.imap_tls === true || req.body.imap_tls === 'on' || req.body.imap_tls === '1' ? 1 : 0,
-    smtp_host: req.body.smtp_host || existing.smtp_host,
-    smtp_port: parseInt(req.body.smtp_port) || existing.smtp_port,
-    smtp_tls: req.body.smtp_tls === true || req.body.smtp_tls === 'on' || req.body.smtp_tls === '1' ? 1 : 0,
-    username: req.body.username || existing.username,
-    password: req.body.password || existing.password,
-    sync_interval: parseInt(req.body.sync_interval) || existing.sync_interval
-  };
-  saveConfig(cfg);
+  // Provider config
+  try {
+    const { saveProviderConfig } = require('../llm/config');
+    const body = req.body || {};
+    const providerUpdates = {};
+    // Only overwrite saved API keys if the client actually sent a non-empty value.
+    // Empty string from a blank password field means "keep existing", not "clear it".
+    if (body.nvidia_api_key)   providerUpdates.nvidia_api_key   = body.nvidia_api_key;
+    if (body.groq_api_key)     providerUpdates.groq_api_key     = body.groq_api_key;
+    if (body.gemini_api_key)   providerUpdates.gemini_api_key   = body.gemini_api_key;
+    if (body.deepseek_api_key) providerUpdates.deepseek_api_key = body.deepseek_api_key;
+    if (body.nvidia_model)          providerUpdates.nvidia_model   = body.nvidia_model;
+    if (body.groq_model)            providerUpdates.groq_model     = body.groq_model;
+    if (body.gemini_model)          providerUpdates.gemini_model   = body.gemini_model;
+    if (body.deepseek_model)        providerUpdates.deepseek_model = body.deepseek_model;
+    if (body.llm_provider_order)    providerUpdates.order        = body.llm_provider_order;
+    if (body.llm_providers_enabled) providerUpdates.enabled      = body.llm_providers_enabled;
+    for (const col of ['nvidia', 'groq', 'gemini', 'deepseek']) {
+      if (body[col + '_rpm'] !== undefined) providerUpdates[col + '_rpm'] = body[col + '_rpm'];
+      if (body[col + '_rpd'] !== undefined) providerUpdates[col + '_rpd'] = body[col + '_rpd'];
+    }
+    if (Object.keys(providerUpdates).length) {
+      saveProviderConfig(req.user.id, providerUpdates);
+      // Reload the router so new keys/order take effect immediately
+      require('../llm').reload();
+    }
+  } catch (e) { /* ignore provider errors to not block account save */ }
+
   res.json({ ok: true, message: 'Settings saved' });
+});
+
+router.get('/api/providers/usage', (req, res) => {
+  const { todaySummary } = require('../llm/usage');
+  const { resolveConfig } = require('../llm/config');
+  const nvidiaProv   = require('../llm/providers/nvidia');
+  const groqProv     = require('../llm/providers/groq');
+  const geminiProv   = require('../llm/providers/gemini');
+  const deepseekProv = require('../llm/providers/deepseek');
+  const defs = { nvidia: nvidiaProv, groq: groqProv, gemini: geminiProv, deepseek: deepseekProv };
+
+  const counts = todaySummary(req.user.id);          // { provider: count }
+  const cfg = resolveConfig(req.user.id);
+  const llm = require('../llm');
+  const observed = llm.router.getObservedLimits(req.user.id) || {};
+  const out = {};
+  for (const name of Object.keys(defs)) {
+    const def = defs[name];
+    const userLim = (cfg.limits && cfg.limits[name]) || {};
+    const rpm = (typeof userLim.rpm === 'number' && userLim.rpm > 0) ? userLim.rpm : def.limits.rpm;
+    const rpd = (typeof userLim.rpd === 'number' && userLim.rpd > 0) ? userLim.rpd : def.limits.rpd;
+    const count = counts[name] || 0;
+    out[name] = {
+      count,
+      rpm,
+      rpd: Number.isFinite(rpd) ? rpd : null,
+      rpd_pct: Number.isFinite(rpd) && rpd > 0 ? Math.min(100, Math.round((count / rpd) * 100)) : null,
+      observed: observed[name] || null
+    };
+  }
+  res.json(out);
+});
+
+// Returns whether server-provided default API keys are still active for this
+// user. Active only on the calendar day (UTC) of signup; after that the user
+// must supply their own keys. Drives the trial banner in Settings → AI
+// Providers and decides which env keys still count in the status / reclassify
+// gates above.
+router.get('/api/llm/default-keys-status', (req, res) => {
+  const { defaultKeysStatusFor } = require('../llm/config');
+  const status = defaultKeysStatusFor(req.user.id);
+  // List which provider env keys are even configured — there's no point
+  // showing a "trial active" banner if the server has no keys to lend.
+  const configured = {
+    nvidia:   !!process.env.NVIDIA_API_KEY,
+    groq:     !!process.env.GROQ_API_KEY,
+    gemini:   !!process.env.GEMINI_API_KEY,
+    deepseek: !!process.env.DEEPSEEK_API_KEY
+  };
+  let hoursRemaining = null;
+  if (status.active && status.expires_at) {
+    // expires_at is "YYYY-MM-DD HH:MM:SS" UTC from SQLite. Append 'Z' so
+    // Date parses it as UTC, not local.
+    const ms = new Date(status.expires_at + 'Z').getTime() - Date.now();
+    hoursRemaining = Math.max(0, Math.round(ms / 3600_000));
+  }
+  res.json({
+    active: status.active,
+    expires_at: status.expires_at,
+    hours_remaining: hoursRemaining,
+    any_default_configured: Object.values(configured).some(Boolean),
+    configured
+  });
+});
+
+// ─── LLM key status + fallback reclassify ───────────────────────────────────
+router.get('/api/llm/status', (req, res) => {
+  const cfg = getConfig(req.user.id) || {};
+  const { defaultKeysStatusFor } = require('../llm/config');
+  const defaults = defaultKeysStatusFor(req.user.id);
+  // Env-provided default keys only count while still inside the user's
+  // signup-day window. After that the user MUST have their own DB key.
+  const envOr = (envKey) => defaults.active ? !!process.env[envKey] : false;
+  const hasNvidia   = !!cfg.nvidia_api_key   || envOr('NVIDIA_API_KEY');
+  const hasGroq     = !!cfg.groq_api_key     || envOr('GROQ_API_KEY');
+  const hasGemini   = !!cfg.gemini_api_key   || envOr('GEMINI_API_KEY');
+  const hasDeepseek = !!cfg.deepseek_api_key || envOr('DEEPSEEK_API_KEY');
+  const fallbackCount = db.prepare(
+    "SELECT COUNT(*) as n FROM classifications WHERE user_id = ? AND source = 'fallback'"
+  ).get(req.user.id).n;
+  // Pending count mirrors the classification scope (see classifier.js):
+  // only emails in the latest SCOPE_LIMIT received within the last
+  // SCOPE_DAYS days are eligible — older / overflow emails are skipped
+  // by classifyEmail and must NOT show as forever-pending.
+  const { SCOPE_DAYS, SCOPE_LIMIT } = require('../classifier');
+  const pendingCount = db.prepare(`
+    SELECT COUNT(*) as n FROM emails e
+    WHERE e.user_id = ?
+      AND e.received_at >= datetime('now', '-${SCOPE_DAYS} days')
+      AND e.id IN (
+        SELECT id FROM emails WHERE user_id = ?
+        ORDER BY received_at DESC LIMIT ${SCOPE_LIMIT}
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM classifications c WHERE c.email_id = e.id AND c.user_id = e.user_id
+      )
+  `).get(req.user.id, req.user.id).n;
+
+  // Per-provider live health (from router in-memory state).
+  const llm = require('../llm');
+  const health = llm.router.getProviderHealth(req.user.id) || {};
+
+  // Is at least one provider plausibly usable right now?
+  const hasKey = { nvidia: hasNvidia, groq: hasGroq, gemini: hasGemini, deepseek: hasDeepseek };
+  const enabledList = ((cfg.llm_providers_enabled || 'nvidia,groq,gemini,deepseek').split(',')).map(s => s.trim());
+  const isUsable = (name) => {
+    if (!enabledList.includes(name)) return false;
+    if (!hasKey[name]) return false;
+    const h = health[name] || {};
+    if (h.status === 'invalid_key' || h.status === 'breaker_open') return false;
+    if (h.status === 'rate_limited') {
+      // 10-min cooldown after a 429.
+      if (h.last_error_at && Date.now() - new Date(h.last_error_at).getTime() < 10 * 60 * 1000) return false;
+    }
+    if (h.status === 'service_busy') {
+      // Shorter cooldown for transient 503s — model overload usually clears in a few minutes.
+      if (h.last_error_at && Date.now() - new Date(h.last_error_at).getTime() < 2 * 60 * 1000) return false;
+    }
+    return true;
+  };
+  const anyUsable = ['nvidia', 'groq', 'gemini', 'deepseek'].some(isUsable);
+
+  res.json({
+    has_cloud_keys: hasNvidia || hasGroq || hasGemini || hasDeepseek,
+    has_nvidia: hasNvidia,
+    has_groq: hasGroq,
+    has_gemini: hasGemini,
+    has_deepseek: hasDeepseek,
+    fallback_count: fallbackCount,
+    pending_classification_count: pendingCount,
+    provider_health: health,
+    any_provider_usable: anyUsable
+  });
+});
+
+router.post('/api/classifications/reclassify-fallback', (req, res) => {
+  const cfg = getConfig(req.user.id) || {};
+  const { defaultKeysStatusFor } = require('../llm/config');
+  const defaults = defaultKeysStatusFor(req.user.id);
+  const envHas = (k) => defaults.active && !!process.env[k];
+  const hasCloud = !!(
+    cfg.nvidia_api_key   || envHas('NVIDIA_API_KEY') ||
+    cfg.groq_api_key     || envHas('GROQ_API_KEY') ||
+    cfg.gemini_api_key   || envHas('GEMINI_API_KEY') ||
+    cfg.deepseek_api_key || envHas('DEEPSEEK_API_KEY')
+  );
+  if (!hasCloud) return res.status(400).json({ error: 'no_llm_configured' });
+
+  const rows = db.prepare(
+    "SELECT email_id FROM classifications WHERE user_id = ? AND source = 'fallback'"
+  ).all(req.user.id);
+  const ids = rows.map(r => r.email_id);
+
+  if (ids.length === 0) return res.json({ queued: 0 });
+
+  // Drop stale fallback classifications + their template/empty drafts.
+  const delCls = db.prepare("DELETE FROM classifications WHERE email_id = ? AND user_id = ?");
+  const delDraft = db.prepare(
+    "DELETE FROM drafts WHERE email_id = ? AND user_id = ? AND (source = 'template' OR source IS NULL OR body IS NULL OR body = '')"
+  );
+  for (const id of ids) { delCls.run(id, req.user.id); delDraft.run(id, req.user.id); }
+
+  // Re-queue through the classifier — Tier 1 rules first, then LLM.
+  for (const id of ids) queueClassification(req.user.id, id);
+
+  res.json({ queued: ids.length });
 });
 
 // Sidebar partial
 router.get('/api/sidebar', (req, res) => {
-  const stats = getStats();
-  const cfg = getConfig();
+  const stats = getStats(req.user.id);
+  const cfg = getConfig(req.user.id);
   const isDemo = !cfg;
 
+  // tip = native browser tooltip on hover. Helps users understand why a
+  // given email landed in this bucket, especially for ambiguous categories
+  // like FYI ('why is this here?').
   const folders = [
-    { cat: 'urgent', icon: '🔴', label: 'Urgent Attention', color: 'var(--accent-red)', count: stats.urgent },
-    { cat: 'meeting_request', icon: '📅', label: 'Meeting Requests', color: 'var(--accent-blue)', count: stats.meeting_request },
-    { cat: 'financial', icon: '💳', label: 'Financial', color: 'var(--accent-green)', count: stats.financial },
-    { cat: 'legal', icon: '⚖️', label: 'Legal', color: 'var(--accent-red)', count: stats.legal },
-    { cat: 'travel', icon: '✈️', label: 'Travel & Hotels', color: 'var(--accent-purple)', count: stats.travel },
-    { cat: 'pitch_deck', icon: '🚀', label: 'Pitch Decks', color: 'var(--accent-orange)', count: stats.pitch_deck },
-    { cat: 'rewards_awards', icon: '🏆', label: 'Rewards & Awards', color: 'var(--accent-gold)', count: stats.rewards_awards },
-    { cat: 'fyi', icon: 'ℹ️', label: 'For Your Info', color: 'var(--accent-gray)', count: stats.fyi },
-    { cat: 'other', icon: '📂', label: 'All Other', color: 'var(--accent-slate)', count: stats.other },
-    { cat: 'trash', icon: '🗑️', label: 'Trash', color: 'var(--text-muted)', count: stats.trash }
+    { cat: 'urgent',          icon: '🔴', label: 'Urgent Attention',  color: 'var(--accent-red)',    count: stats.urgent,
+      tip: 'Emails marked urgent or time-sensitive (deadlines, ASAP, action required, legal matters).' },
+    { cat: 'meeting_request', icon: '📅', label: 'Meeting Requests',  color: 'var(--accent-blue)',   count: stats.meeting_request,
+      tip: 'Calendar invites, Zoom / Google Meet / Teams / Webex links, 1:1 / catch-up requests.' },
+    { cat: 'financial',       icon: '💳', label: 'Financial',         color: 'var(--accent-green)',  count: stats.financial,
+      tip: 'Statements, invoices, payment / EMI reminders, transaction alerts, bank notifications.' },
+    { cat: 'legal',           icon: '⚖️', label: 'Legal',              color: 'var(--accent-red)',    count: stats.legal,
+      tip: 'Legal notices, NDAs, contracts, summons, arbitration. Always treated as urgent.' },
+    { cat: 'travel',          icon: '✈️', label: 'Travel & Hotels',    color: 'var(--accent-purple)', count: stats.travel,
+      tip: 'Flight & hotel bookings, PNRs, itineraries, e-tickets, check-in reminders.' },
+    { cat: 'pitch_deck',      icon: '🚀', label: 'Pitch Decks',       color: 'var(--accent-orange)', count: stats.pitch_deck,
+      tip: 'Investment pitches, funding rounds, term sheets, VC outreach.' },
+    { cat: 'rewards_awards',  icon: '🏆', label: 'Rewards & Awards',   color: 'var(--accent-gold)',   count: stats.rewards_awards,
+      tip: 'Loyalty points, cashback, miles expiry, vouchers, recognition emails.' },
+    { cat: 'fyi',             icon: 'ℹ️', label: 'For Your Info',      color: 'var(--accent-gray)',   count: stats.fyi,
+      tip: 'Newsletters, weekly / monthly digests, course-platform updates, and automated noreply / no-reply senders. Informational — not action-required.' },
+    { cat: 'other',           icon: '📂', label: 'All Other',         color: 'var(--accent-slate)',  count: stats.other,
+      tip: "Emails that didn't match any specific category. Often person-to-person mail without a clear topic." },
+    { cat: 'trash',           icon: '🗑️', label: 'Trash',              color: 'var(--text-muted)',    count: stats.trash,
+      tip: 'Deleted emails. Recoverable until you disconnect the mail server with "permanently delete".' }
   ];
 
   res.send(`
@@ -1020,6 +1368,7 @@ router.get('/api/sidebar', (req, res) => {
       ${folders.map(f => `
         <a class="folder-item" style="display:flex;align-items:center;gap:10px;padding:10px 16px;cursor:pointer;border-radius:6px;margin:2px 8px;transition:background 150ms;text-decoration:none;color:var(--text-secondary);"
            hx-get="/api/emails?category=${f.cat}" hx-target="#email-list" hx-swap="innerHTML"
+           title="${escHtml(f.tip || f.label)}"
            onmouseenter="this.style.background='var(--bg-hover)'"
            onmouseleave="this.style.background=''">
           <span style="font-size:16px;flex-shrink:0;">${f.icon}</span>

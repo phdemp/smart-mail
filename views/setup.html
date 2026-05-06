@@ -4,6 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>IntelliMail — Setup</title>
+  <!-- Pre-paint theme: see app.css. Applies dark theme before any CSS so
+       dark-mode users don't get a flash of the default light theme. -->
+  <script>(function(){try{if(localStorage.getItem('im_theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
+  <script>
+  (function () {
+    const token = localStorage.getItem('intellimail_token');
+    if (token) { location.href = '/dashboard'; }
+  })();
+  </script>
   <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="/css/app.css">
@@ -20,14 +29,14 @@
         radial-gradient(ellipse at 80% 80%, rgba(167, 139, 250, 0.04) 0%, transparent 40%);
     }
     .setup-card {
-      background: rgba(16, 20, 31, 0.95);
+      background: var(--bg-panel);
       backdrop-filter: blur(20px);
-      border: 1px solid rgba(255,255,255,0.06);
+      border: 1px solid var(--border);
       border-radius: 16px;
       width: 100%;
       max-width: 560px;
       margin: 24px;
-      box-shadow: 0 24px 80px rgba(0,0,0,0.5);
+      box-shadow: 0 24px 80px rgba(26, 37, 69, 0.16);
     }
     .provider-btn {
       background: var(--bg-raised);
@@ -78,6 +87,9 @@
   <div style="padding:32px 32px 24px;border-bottom:1px solid var(--border);text-align:center;">
     <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:24px;color:var(--accent-cyan);margin-bottom:6px;">✉ IntelliMail</div>
     <div style="font-size:13px;color:var(--text-muted);font-family:'Literata',serif;font-style:italic;">Intelligent Email Intelligence Dashboard</div>
+    <div style="font-size:12px;color:var(--text-muted);margin-top:14px;">
+      Already have an account? <a href="/login" style="color:var(--accent-cyan);text-decoration:none;font-weight:600;">Log in →</a>
+    </div>
   </div>
 
   <!-- Error from redirect -->
@@ -229,24 +241,16 @@
       <div>SMTP: <span style="color:var(--text-primary);" x-text="form.smtp_host+':'+form.smtp_port"></span></div>
     </div>
 
-    <form method="POST" action="/api/account/save" @submit="launching=true">
-      <input type="hidden" name="display_name" :value="form.display_name">
-      <input type="hidden" name="email" :value="form.email">
-      <input type="hidden" name="username" :value="form.username||form.email">
-      <input type="hidden" name="password" :value="form.password">
-      <input type="hidden" name="imap_host" :value="form.imap_host">
-      <input type="hidden" name="imap_port" :value="form.imap_port">
-      <input type="hidden" name="imap_tls" :value="form.imap_tls?'1':'0'">
-      <input type="hidden" name="smtp_host" :value="form.smtp_host">
-      <input type="hidden" name="smtp_port" :value="form.smtp_port">
-      <input type="hidden" name="smtp_tls" :value="form.smtp_tls?'1':'0'">
-      <input type="hidden" name="sync_interval" value="60">
+    <template x-if="error">
+      <div style="margin-bottom:12px;padding:10px 14px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:8px;font-size:13px;color:var(--accent-red);">
+        ⚠️ <span x-text="error"></span>
+      </div>
+    </template>
 
-      <button type="submit" class="action-btn btn-primary" style="width:100%;padding:14px;font-size:15px;" :disabled="launching">
-        <span x-show="!launching">🚀 Launch IntelliMail</span>
-        <span x-show="launching">Launching...</span>
-      </button>
-    </form>
+    <button type="button" class="action-btn btn-primary" style="width:100%;padding:14px;font-size:15px;" :disabled="launching" @click="launch()">
+      <span x-show="!launching">🚀 Launch IntelliMail</span>
+      <span x-show="launching">Launching...</span>
+    </button>
 
     <button class="action-btn btn-ghost" @click="step=3" style="width:100%;margin-top:10px;">← Back</button>
   </div>
@@ -276,6 +280,7 @@ function setupWizard() {
     provider: '',
     showPassword: false,
     launching: false,
+    error: '',
     urlError: new URLSearchParams(window.location.search).get('error'),
     form: {
       display_name:'', email:'', username:'', password:'',
@@ -318,6 +323,51 @@ function setupWizard() {
         this.results.smtp = await r.json();
       } catch(e) {
         this.results.smtp = { ok: false, error: 'Network error: ' + e.message };
+      }
+    },
+
+    async launch() {
+      this.launching = true;
+      this.error = '';
+      const payload = {
+        display_name: this.form.display_name,
+        email:        this.form.email,
+        username:     this.form.username || this.form.email,
+        password:     this.form.password,
+        imap_host:    this.form.imap_host,
+        imap_port:    this.form.imap_port,
+        imap_tls:     this.form.imap_tls ? '1' : '0',
+        smtp_host:    this.form.smtp_host,
+        smtp_port:    this.form.smtp_port,
+        smtp_tls:     this.form.smtp_tls ? '1' : '0',
+        sync_interval: 60
+      };
+      try {
+        const res = await fetch('/api/auth/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (res.ok) {
+          localStorage.setItem('intellimail_token', data.token);
+          // Land on the AI Providers tab so first-time users see the
+          // trial-keys banner and can paste their own keys before the
+          // signup-day window expires.
+          location.href = '/settings?firstrun=1#providers';
+          return;
+        }
+        if (res.status === 409) {
+          this.error = 'An account with this email already exists. Log in instead.';
+        } else if (res.status === 400 && data.error === 'imap_failed') {
+          this.error = 'IMAP test failed: ' + (data.detail || 'check host/port/password');
+        } else {
+          this.error = data.error || 'Setup failed';
+        }
+      } catch(e) {
+        this.error = 'Network error: ' + e.message;
+      } finally {
+        this.launching = false;
       }
     }
   };

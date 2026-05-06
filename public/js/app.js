@@ -1,9 +1,73 @@
 // ── IntelliMail Frontend ──────────────────────────────────────────────────────
 // Alpine.js components + SSE listener + toast system + utilities
 
+// ─── Auth plumbing ──────────────────────────────────────────────────────────
+// IMPORTANT: these listeners must attach SYNCHRONOUSLY at script-load time,
+// before HTMX processes any hx-trigger="load" elements. This script is loaded
+// in <head> after the htmx CDN, so body-level hx-trigger="load" XHRs are
+// intercepted correctly. Listening on `document` works before `<body>` exists.
+function authFetch(url, opts = {}) {
+  const token = localStorage.getItem('intellimail_token');
+  const headers = { ...(opts.headers || {}) };
+  if (token) headers.Authorization = 'Bearer ' + token;
+  const promise = fetch(url, { ...opts, headers });
+  promise.then(r => {
+    if (r.status === 401 && !url.startsWith('/api/auth/')) {
+      localStorage.removeItem('intellimail_token');
+      location.href = '/login';
+    }
+  }).catch(() => {});
+  return promise;
+}
+
+document.addEventListener('htmx:configRequest', (evt) => {
+  const token = localStorage.getItem('intellimail_token');
+  if (token) evt.detail.headers['Authorization'] = 'Bearer ' + token;
+});
+document.addEventListener('htmx:responseError', (evt) => {
+  if (evt.detail && evt.detail.xhr && evt.detail.xhr.status === 401) {
+    localStorage.removeItem('intellimail_token');
+    location.href = '/login';
+  }
+});
+
+// ── Confirm modal ─────────────────────────────────────────────────────────────
+// A single Alpine component (mounted once per page at the bottom of <body>)
+// exposes window.confirmModal(title, message, opts?) returning Promise<boolean>.
+// opts: { confirmLabel?: string, danger?: boolean }
+function confirmModalComponent() {
+  return {
+    open: false,
+    title: '',
+    message: '',
+    confirmLabel: 'Confirm',
+    danger: false,
+    _resolve: null,
+    init() {
+      window.confirmModal = (title, message, opts = {}) => new Promise(resolve => {
+        this.title = title;
+        this.message = message;
+        this.confirmLabel = opts.confirmLabel || 'Confirm';
+        this.danger = !!opts.danger;
+        this._resolve = resolve;
+        this.open = true;
+      });
+    },
+    cancel() {
+      this.open = false;
+      if (this._resolve) { this._resolve(false); this._resolve = null; }
+    },
+    confirm() {
+      this.open = false;
+      if (this._resolve) { this._resolve(true); this._resolve = null; }
+    }
+  };
+}
+
 // ── Alpine: App State ─────────────────────────────────────────────────────────
 
 function appState() {
+  const savedTheme = localStorage.getItem('im_theme');
   return {
     sidebarCollapsed: false,
     stats: {
@@ -13,26 +77,61 @@ function appState() {
     },
     syncMode: 'connecting',
     lastSync: null,
-    theme: localStorage.getItem('im_theme') || 'dark',
+    theme: savedTheme === 'dark' ? 'dark' : 'light',
+    llmStatus: null,        // { has_cloud_keys, has_groq, has_gemini, fallback_count, pending_classification_count }
+    pendingClassifying: 0,  // live count of emails currently queued / being classified
+    classifyTotal: 0,       // peak value seen since last drain — used to compute progress %
+    get classifyPct() {
+      return this.classifyTotal > 0
+        ? Math.round(((this.classifyTotal - this.pendingClassifying) / this.classifyTotal) * 100)
+        : 0;
+    },
 
     init() {
       // Apply saved theme
       this.applyTheme(this.theme);
 
       // Fetch initial stats
-      fetch('/api/stats')
+      authFetch('/api/stats')
         .then(r => r.json())
         .then(data => { this.stats = data; })
         .catch(() => {});
 
       // Fetch current sync status
-      fetch('/api/sync/status')
+      authFetch('/api/sync/status')
         .then(r => r.json())
         .then(d => { this.syncMode = d.mode; this.lastSync = d.lastSync; })
         .catch(() => {});
 
+      // Fetch LLM config status (drives the "configure AI providers" banner + classify pill)
+      this.refreshLlmStatus();
+      // Re-poll every 10s so the banner / pill stays current when a reclassify
+      // runs in another tab or provider health changes.
+      setInterval(() => this.refreshLlmStatus(), 10000);
+
       // Set up SSE
       this.connectSSE();
+    },
+
+    async refreshLlmStatus() {
+      try {
+        const r = await authFetch('/api/llm/status');
+        if (!r.ok) return;
+        const d = await r.json();
+        this.llmStatus = d;
+        const backendPending = d.pending_classification_count || 0;
+        // Reconcile the live counter with the server's truth:
+        //  - If server says 0 and our SSE-driven counter hasn't hit 0, trust server.
+        //  - If server says N > current local counter, adopt it (another tab's
+        //    reclassify job or a missed SSE event).
+        if (backendPending === 0) {
+          this.pendingClassifying = 0;
+          this.classifyTotal = 0;
+        } else if (backendPending > this.pendingClassifying) {
+          this.pendingClassifying = backendPending;
+          if (backendPending > this.classifyTotal) this.classifyTotal = backendPending;
+        }
+      } catch {}
     },
 
     applyTheme(theme) {
@@ -46,34 +145,14 @@ function appState() {
     },
 
     async logout() {
-      try {
-        // Step 1: check pending deletes before disconnecting
-        const check = await fetch('/api/account/logout', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ confirmed: false })
-        });
-        const data = await check.json();
-
-        let expunge = false;
-        if (data.pendingDeletes > 0) {
-          const choice = confirm(
-            `You have ${data.pendingDeletes} email${data.pendingDeletes === 1 ? '' : 's'} in Trash.\n\nPermanently delete from server before disconnecting?\n\nOK = Delete permanently\nCancel = Keep in Trash (can restore later)`
-          );
-          expunge = choice;
-          if (!confirm('Disconnect from mail server?')) return;
-        } else {
-          if (!confirm('Disconnect from mail server?')) return;
-        }
-
-        // Step 2: disconnect (with optional expunge)
-        await fetch('/api/account/logout', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ confirmed: true, expunge })
-        });
-      } catch(e) {}
-      window.location.href = '/setup';
+      const ok = await window.confirmModal(
+        'Log out of IntelliMail?',
+        'You\'ll need to sign in again. Your IMAP sync keeps running in the background so your next login shows a fresh inbox.',
+        { confirmLabel: 'Log out', danger: true }
+      );
+      if (!ok) return;
+      localStorage.removeItem('intellimail_token');
+      window.location.href = '/login';
     },
 
     connectSSE() {
@@ -81,7 +160,7 @@ function appState() {
 
       es.onopen = () => {
         // Refresh sync status on reconnect
-        fetch('/api/sync/status')
+        authFetch('/api/sync/status')
           .then(r => r.json())
           .then(d => { this.syncMode = d.mode; this.lastSync = d.lastSync; })
           .catch(() => {});
@@ -95,7 +174,10 @@ function appState() {
           if (listPanel && window.htmx) {
             htmx.trigger(listPanel, 'categoryChange');
           }
-          fetch('/api/stats').then(r => r.json()).then(data => { this.stats = data; }).catch(() => {});
+          authFetch('/api/stats').then(r => r.json()).then(data => { this.stats = data; }).catch(() => {});
+          // New email is unclassified → bump the "classifying" counter.
+          this.pendingClassifying += 1;
+          if (this.pendingClassifying > this.classifyTotal) this.classifyTotal = this.pendingClassifying;
         } catch(err) {}
       });
 
@@ -108,7 +190,7 @@ function appState() {
       });
 
       es.addEventListener('stats_update', (e) => {
-        fetch('/api/stats').then(r => r.json()).then(data => { this.stats = data; }).catch(() => {});
+        authFetch('/api/stats').then(r => r.json()).then(data => { this.stats = data; }).catch(() => {});
       });
 
       es.addEventListener('heartbeat', () => {
@@ -117,10 +199,14 @@ function appState() {
 
       es.addEventListener('classification_done', (e) => {
         const data = JSON.parse(e.data);
+        // Decrement the "currently classifying" counter.
+        if (this.pendingClassifying > 0) this.pendingClassifying -= 1;
+        if (this.pendingClassifying === 0) this.classifyTotal = 0;
         // Refresh the email list so the pending badge updates to the real category
         const listPanel = document.querySelector('[hx-get*="/api/emails"]');
         if (listPanel) htmx.trigger(listPanel, 'refresh');
       });
+
 
       es.onerror = () => {
         this.syncMode = 'disconnected';
@@ -147,11 +233,12 @@ function appState() {
 
 // ── Alpine: Draft Editor ──────────────────────────────────────────────────────
 
-function draftEditor({ emailId, initialBody, initialTone, toAddress, subject }) {
+function draftEditor({ emailId, initialBody, initialTone, initialSource, toAddress, subject }) {
   return {
     emailId,
     draftBody: initialBody || '',
     tone: initialTone || 'professional',
+    source: initialSource || null,   // 'template' | 'llm' | 'user' | null
     toAddress: toAddress || '',
     subject: subject || '',
     regenerating: false,
@@ -173,6 +260,14 @@ function draftEditor({ emailId, initialBody, initialTone, toAddress, subject }) 
           timer = setTimeout(() => this.saveDraft(), 2000);
         };
       }
+      // Auto-upgrade on first open: if the stored draft is empty OR was a
+      // template fallback, try the router now. User-edited drafts (source='user')
+      // and known-LLM drafts (source='llm') are left alone.
+      const needsRegen = !this.draftBody || !this.draftBody.trim() || this.source === 'template';
+      if (needsRegen) {
+        this.tone = this.tone || 'professional';
+        this.regenerateDraft();
+      }
     },
 
     debouncedSave() {
@@ -183,7 +278,7 @@ function draftEditor({ emailId, initialBody, initialTone, toAddress, subject }) 
     async saveDraft() {
       this.saveStatus = 'Saving...';
       try {
-        await fetch(`/api/emails/${this.emailId}/draft/save`, {
+        await authFetch(`/api/emails/${this.emailId}/draft/save`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -193,6 +288,9 @@ function draftEditor({ emailId, initialBody, initialTone, toAddress, subject }) 
             to_address: this.toAddress
           })
         });
+        // User-triggered save → server stores source='user'.
+        // Reflect locally so the editor doesn't auto-upgrade on next mount.
+        this.source = 'user';
         this.saveStatus = 'Saved';
       } catch(e) {
         this.saveStatus = 'Save failed';
@@ -208,7 +306,7 @@ function draftEditor({ emailId, initialBody, initialTone, toAddress, subject }) 
       this.regenerating = true;
       this.saveStatus = 'Regenerating...';
       try {
-        const res = await fetch(`/api/emails/${this.emailId}/draft/regen`, {
+        const res = await authFetch(`/api/emails/${this.emailId}/draft/regen`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ tone: this.tone })
@@ -216,10 +314,17 @@ function draftEditor({ emailId, initialBody, initialTone, toAddress, subject }) 
         if (res.ok) {
           const data = await res.json();
           this.draftBody = data.draft_reply || '';
-          this.saveStatus = 'Regenerated';
-          showToast('success', '↻ Draft regenerated');
+          // Track provenance so next mount doesn't auto-regen again.
+          this.source = data.source === 'template' ? 'template' : 'llm';
+          if (data.warning) {
+            this.saveStatus = 'Regenerated (template)';
+            showToast('warning', '⚠ ' + data.warning);
+          } else {
+            this.saveStatus = 'Regenerated';
+            showToast('success', '↻ Draft regenerated (' + (data.source || 'llm') + ')');
+          }
         } else {
-          const err = await res.json();
+          const err = await res.json().catch(() => ({}));
           showToast('error', '❌ Regen failed: ' + (err.error || 'Unknown error'));
           this.saveStatus = 'Regen failed';
         }
@@ -238,7 +343,7 @@ function draftEditor({ emailId, initialBody, initialTone, toAddress, subject }) 
       }
       this.sending = true;
       try {
-        const res = await fetch(`/api/emails/${this.emailId}/draft/send`, {
+        const res = await authFetch(`/api/emails/${this.emailId}/draft/send`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -348,6 +453,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Handle HTMX errors
   document.body.addEventListener('htmx:responseError', (evt) => {
+    // 401 is handled by the auth plumbing (redirects to /login); don't show a toast
+    if (evt.detail.xhr && evt.detail.xhr.status === 401) return;
     showToast('error', '❌ Request failed: ' + evt.detail.xhr.status);
   });
 });
