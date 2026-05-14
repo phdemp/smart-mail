@@ -918,10 +918,13 @@ router.post('/api/emails/:id/permanently-delete', async (req, res) => {
   res.json({ ok: true });
 });
 
-// Keep archive as alias for backward compat
+// CR-05: Archive sets is_archived=1 (hide from inbox, keep accessible).
+// The previous implementation set is_deleted=1 which was identical to
+// the delete endpoint — archived emails were irrecoverable. The is_archived
+// column already exists; the email list query already filters on it.
 router.post('/api/emails/:id/archive', (req, res) => {
   const info = db.prepare(
-    'UPDATE emails SET is_deleted = 1, is_read = 1 WHERE id = ? AND user_id = ?'
+    'UPDATE emails SET is_archived = 1, is_read = 1 WHERE id = ? AND user_id = ?'
   ).run(req.params.id, req.user.id);
   if (info.changes === 0) return res.status(404).json({ error: 'not_found' });
   res.json({ ok: true });
