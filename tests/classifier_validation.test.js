@@ -62,7 +62,11 @@ test('storeClassification rejects an out-of-enum category (regression: legacy "r
   assert.equal(row.urgency,  'normal', 'invalid urgency coerced to "normal"');
 });
 
-test('rulesClassify does NOT mark gitlab access-token email as fyi (regression: body unsubscribe over-match)', () => {
+// IN-04: Use async/await instead of try{return promise.then()}/finally{restore}.
+// The original pattern restored the mock in finally{} which runs synchronously
+// BEFORE the returned promise resolves, creating a race: the real router could
+// be called by other tests between the restore and the .then() assertion.
+test('rulesClassify does NOT mark gitlab access-token email as fyi (regression: body unsubscribe over-match)', async () => {
   // Re-import without going through the storeClassification path — we want to
   // exercise the pure rules function. It's not exported, so we test the
   // observable behavior: an email with a CAN-SPAM-style unsubscribe footer
@@ -86,18 +90,18 @@ test('rulesClassify does NOT mark gitlab access-token email as fyi (regression: 
   const origClassify = llm.router.classify;
   llm.router.classify = async () => null;
   try {
-    return classifyEmail(userId, emailId).then(() => {
-      const row = db.prepare('SELECT category, source FROM classifications WHERE email_id = ?').get(emailId);
-      // Rules tier shouldn't match this — should fall through. Source will be
-      // 'fallback' (router returned null), category stays 'other'.
-      assert.notEqual(row.category, 'fyi', 'gitlab access-token email must not be classified as fyi');
-    });
+    await classifyEmail(userId, emailId);
+    const row = db.prepare('SELECT category, source FROM classifications WHERE email_id = ?').get(emailId);
+    // Rules tier shouldn't match this — should fall through. Source will be
+    // 'fallback' (router returned null), category stays 'other'.
+    assert.notEqual(row.category, 'fyi', 'gitlab access-token email must not be classified as fyi');
   } finally {
     llm.router.classify = origClassify;
   }
 });
 
-test('rulesClassify still marks an explicit newsletter as fyi', () => {
+// IN-04: Same async/await fix applied here.
+test('rulesClassify still marks an explicit newsletter as fyi', async () => {
   const userId = global.__cvUserId;
 
   db.prepare(`
@@ -115,11 +119,10 @@ test('rulesClassify still marks an explicit newsletter as fyi', () => {
   const origClassify = llm.router.classify;
   llm.router.classify = async () => null;  // force rules-only path
   try {
-    return classifyEmail(userId, emailId).then(() => {
-      const row = db.prepare('SELECT category, source FROM classifications WHERE email_id = ?').get(emailId);
-      assert.equal(row.category, 'fyi');
-      assert.equal(row.source,   'rules');
-    });
+    await classifyEmail(userId, emailId);
+    const row = db.prepare('SELECT category, source FROM classifications WHERE email_id = ?').get(emailId);
+    assert.equal(row.category, 'fyi');
+    assert.equal(row.source,   'rules');
   } finally {
     llm.router.classify = origClassify;
   }
