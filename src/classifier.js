@@ -215,14 +215,19 @@ async function classifyEmail(userId, emailId) {
 }
 
 function storeClassification(userId, emailId, data) {
+  // WR-04: Narrowed error handling — only the optional draft insert is silently
+  // swallowed. The classification INSERT and broadcast are in a separate try so
+  // a schema error, constraint violation, or migration mismatch surfaces in logs
+  // and stops the function rather than silently producing no classification row.
+  // Sanitize category/urgency at the storage boundary. parseProviderResponse
+  // already does this for LLM output, but a defense-in-depth check here
+  // catches any code path that constructs `data` directly (e.g. legacy
+  // imports, future callers, or out-of-enum values like the historical
+  // 'request' rows the old TF-IDF classifier wrote).
+  const safeCategory = CATEGORIES.includes(data.category) ? data.category : 'other';
+  const safeUrgency  = URGENCIES.includes(data.urgency)   ? data.urgency  : 'normal';
+
   try {
-    // Sanitize category/urgency at the storage boundary. parseProviderResponse
-    // already does this for LLM output, but a defense-in-depth check here
-    // catches any code path that constructs `data` directly (e.g. legacy
-    // imports, future callers, or out-of-enum values like the historical
-    // 'request' rows the old TF-IDF classifier wrote).
-    const safeCategory = CATEGORIES.includes(data.category) ? data.category : 'other';
-    const safeUrgency  = URGENCIES.includes(data.urgency)   ? data.urgency  : 'normal';
     db.prepare(`
       INSERT OR IGNORE INTO classifications
       (user_id, email_id, category, urgency, urgency_reason, summary, extracted_data, draft_reply, suggested_tone, source, low_confidence)
@@ -245,7 +250,13 @@ function storeClassification(userId, emailId, data) {
       category: safeCategory,
       urgency:  safeUrgency
     });
+  } catch (e) {
+    console.error('[classifier] storeClassification failed:', e.message);
+    return; // Do not attempt the draft insert if classification INSERT failed
+  }
 
+  // Draft insert is truly optional — a failed draft must not block sync.
+  try {
     // Create an empty draft row for EVERY email (regardless of category).
     // The draft editor will auto-regen on first open via the router, so users
     // get an LLM reply on every email — inbox, urgent, fyi, anything.
@@ -255,9 +266,7 @@ function storeClassification(userId, emailId, data) {
       db.prepare('INSERT INTO drafts (user_id, email_id, body, tone, subject, to_address) VALUES (?,?,?,?,?,?)')
         .run(userId, emailId, '', data.suggested_tone || 'professional', 'Re: ' + email.subject, email.from_address);
     }
-  } catch (e) {
-    // silent: classifier failures shouldn't block sync
-  }
+  } catch { /* silent: draft creation is optional and must not block sync */ }
 }
 
 async function processQueueFor(userId) {
@@ -297,7 +306,11 @@ async function generateDraft(userId, emailId) {
   try {
     const routed = await llm.router.generateDraft(email, { mode: 'draft', userId });
     return routed?.draft_reply || 'Thank you for your email. I will review and respond shortly.';
-  } catch {
+  } catch (err) {
+    // WR-03: Log failures so they are visible during debugging. Silent swallow
+    // made LLM call failures invisible — the router could throw from a bug and
+    // leave no trace in logs.
+    console.warn('[classifier] generateDraft failed:', err.message);
     return 'Thank you for your email. I will review and respond shortly.';
   }
 }
