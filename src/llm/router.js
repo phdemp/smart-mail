@@ -123,6 +123,86 @@ function createRouter({ providers, getConfig, logger, usage }) {
     return null;
   }
 
+  async function generateDraft(email, opts = {}) {
+    const userId = opts.userId;
+    const cfg = (getConfig && getConfig(userId)) || { order: [], enabled: [], keys: {}, models: {}, limits: {} };
+    const enabledSet = new Set(cfg.enabled || []);
+    const order = (cfg.order || []).filter(n => enabledSet.has(n) && byName.has(n));
+
+    for (const name of order) {
+      const provider = byName.get(name);
+      const providerCfg = {
+        apiKey: (cfg.keys || {})[name],
+        model:  (cfg.models || {})[name] || provider.defaultModel,
+        temperature: 0.4
+      };
+
+      if (breakerOpen(userId, name)) {
+        log({ provider: name, mode: 'draft', outcome: 'skipped_breaker', email_id: email.id, user_id: userId });
+        continue;
+      }
+
+      const cfgLim = cfg.limits && cfg.limits[name];
+      const effectiveRpd = (cfgLim && typeof cfgLim.rpd === 'number' && cfgLim.rpd > 0) ? cfgLim.rpd : provider.limits.rpd;
+      if (Number.isFinite(effectiveRpd)) {
+        const count = userId != null ? usageApi.getCount(userId, name) : usageApi.getCount(name);
+        if (count >= effectiveRpd) {
+          log({ provider: name, mode: 'draft', outcome: 'skipped_quota', email_id: email.id, user_id: userId });
+          continue;
+        }
+      }
+
+      const maxWaitMs = 2000;
+      const got = await getBucket(userId, provider).acquire(maxWaitMs);
+      if (!got) {
+        log({ provider: name, mode: 'draft', outcome: 'skipped_bucket', email_id: email.id, user_id: userId });
+        continue;
+      }
+
+      const start = Date.now();
+      try {
+        const rawResult = await provider.call(email, opts, providerCfg);
+        if (rawResult && typeof rawResult === 'object' && rawResult._observedLimits) {
+          observedLimits.set(key(userId, name), rawResult._observedLimits);
+        }
+        const parsed = typeof rawResult === 'string'
+          ? parseProviderResponse(rawResult)
+          : { ...DEFAULTS, ...rawResult };
+        delete parsed._observedLimits;
+        try {
+          if (userId != null) usageApi.increment(userId, name);
+          else usageApi.increment(name);
+        } catch {}
+        const br = getBreaker(userId, name);
+        br.fails = 0;
+        br.lastSuccessAt = Date.now();
+        br.lastError = null;
+        br.lastErrorAt = null;
+        br.lastErrorMsg = null;
+        log({ provider: name, mode: 'draft', outcome: 'success', latency_ms: Date.now() - start, email_id: email.id, user_id: userId });
+        return { draft_reply: parsed.draft_reply || null, _provider: name };
+      } catch (err) {
+        const outcome = classifyError(err);
+        log({ provider: name, mode: 'draft', outcome, latency_ms: Date.now() - start, email_id: email.id, user_id: userId, err: err.message });
+        const br = getBreaker(userId, name);
+        br.lastError = outcome;
+        br.lastErrorAt = Date.now();
+        br.lastErrorMsg = String(err.message || '').slice(0, 300);
+        if (outcome === 'http_401') {
+          br.openedAt = Date.now();
+          br._sessionDisabled = true;
+        } else if (outcome === 'http_429' || outcome === 'http_503') {
+          // transient — don't trip the breaker
+        } else {
+          br.fails += 1;
+          if (br.fails >= BREAKER_FAILS) { br.openedAt = Date.now(); br.fails = 0; }
+        }
+        continue;
+      }
+    }
+    return null;
+  }
+
   function classifyError(err) {
     if (err.status === 429) return 'http_429';
     if (err.status === 401 || err.status === 403) return 'http_401';
@@ -172,7 +252,7 @@ function createRouter({ providers, getConfig, logger, usage }) {
     }
   }
 
-  return { classify, _byName: byName, getProviderHealth, getObservedLimits, setObservedLimits };
+  return { classify, generateDraft, _byName: byName, getProviderHealth, getObservedLimits, setObservedLimits };
 }
 
 module.exports = { createRouter };

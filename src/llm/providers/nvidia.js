@@ -1,4 +1,4 @@
-const { buildPrompt, parseProviderResponse, SYSTEM_PROMPT } = require('./base');
+const { buildPrompt, buildDraftPrompt, parseProviderResponse, SYSTEM_PROMPT } = require('./base');
 
 const ENDPOINT = 'https://integrate.api.nvidia.com/v1/chat/completions';
 
@@ -20,11 +20,11 @@ async function call(email, opts, cfg) {
       },
       body: JSON.stringify({
         model: cfg.model || 'qwen/qwen3.5-122b-a10b',
-        temperature: 0.1,
+        temperature: opts.temperature || 0.1,
         response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: buildPrompt(email, opts) }
+          { role: 'user', content: opts.mode === 'draft' ? buildDraftPrompt(email, opts) : buildPrompt(email, opts) }
         ]
       }),
       signal: controller.signal
