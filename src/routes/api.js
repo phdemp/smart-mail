@@ -121,7 +121,11 @@ router.post('/api/account/save', async (req, res) => {
     startSyncForUser(req.user.id);
     res.redirect('/dashboard');
   } catch (e) {
-    res.redirect('/setup?error=' + encodeURIComponent(e.message));
+    // CR-02: Never reflect raw DB error messages — log server-side only.
+    // e.message may contain user-supplied values from constraint violations
+    // which could be used to inject extra query params or confuse client logic.
+    console.error('[account/save] error:', e.message);
+    res.redirect('/setup?error=' + encodeURIComponent('Save failed. Check your settings.'));
   }
 });
 
