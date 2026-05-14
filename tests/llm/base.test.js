@@ -6,7 +6,8 @@ const {
   parseProviderResponse,
   CATEGORIES,
   DEFAULTS,
-  SYSTEM_PROMPT
+  SYSTEM_PROMPT,
+  BODY_SNIPPET_LEN  // IN-01: use the named constant so tests don't drift from implementation
 } = require('../../src/llm/providers/base');
 
 test('buildPrompt includes sender, subject, and body truncated to 800', () => {
@@ -19,8 +20,9 @@ test('buildPrompt includes sender, subject, and body truncated to 800', () => {
   const out = buildPrompt(email, { mode: 'full' });
   assert.match(out, /From: Alice <alice@example\.com>/);
   assert.match(out, /Subject: Invoice #123/);
-  assert.ok(out.includes('x'.repeat(800)) && !out.includes('x'.repeat(801)),
-    'body should be truncated to 800 chars');
+  // IN-01: use BODY_SNIPPET_LEN so this test stays correct if the constant changes
+  assert.ok(out.includes('x'.repeat(BODY_SNIPPET_LEN)) && !out.includes('x'.repeat(BODY_SNIPPET_LEN + 1)),
+    'body should be truncated to BODY_SNIPPET_LEN chars');
 });
 
 test('parseProviderResponse parses clean JSON and normalizes', () => {
@@ -128,8 +130,9 @@ test('buildDraftPrompt includes from, subject, and body truncated to ~800', () =
   });
   assert.match(r, /From: Bob/);
   assert.match(r, /Subject: Test/);
-  assert.ok(r.includes('x'.repeat(800)) && !r.includes('x'.repeat(801)),
-    'body should be truncated to 800 chars');
+  // IN-01: use BODY_SNIPPET_LEN so this test stays correct if the constant changes
+  assert.ok(r.includes('x'.repeat(BODY_SNIPPET_LEN)) && !r.includes('x'.repeat(BODY_SNIPPET_LEN + 1)),
+    'body should be truncated to BODY_SNIPPET_LEN chars');
 });
 
 // buildDraftPrompt tone instruction

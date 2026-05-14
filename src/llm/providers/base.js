@@ -1,3 +1,8 @@
+// IN-01: Named constant for body truncation limit.
+// Exported so tests can reference it directly — if the limit changes,
+// only this one value needs updating (not 4+ separate occurrences).
+const BODY_SNIPPET_LEN = 800;
+
 const CATEGORIES = [
   'meeting_request', 'financial', 'legal', 'travel',
   'pitch_deck', 'fyi', 'rewards_awards', 'other'
@@ -57,7 +62,7 @@ function buildPrompt(email, opts = {}) {
   lines.push('');
   lines.push(`From: ${email.from_name || ''} <${email.from_address || ''}>`);
   lines.push(`Subject: ${email.subject || ''}`);
-  const body = (email.body_text || email.preview || '').slice(0, 800);
+  const body = (email.body_text || email.preview || '').slice(0, BODY_SNIPPET_LEN);
   if (body) lines.push('', body);
   return lines.join('\n');
 }
@@ -69,7 +74,7 @@ function buildDraftPrompt(email, opts = {}) {
   lines.push('');
   lines.push(`From: ${email.from_name || ''} <${email.from_address || ''}>`);
   lines.push(`Subject: ${email.subject || ''}`);
-  const body = (email.body_text || email.preview || '').slice(0, 800);
+  const body = (email.body_text || email.preview || '').slice(0, BODY_SNIPPET_LEN);
   if (body) lines.push('', body);
   if (opts.tone) lines.push('', `Write in a ${opts.tone} tone.`);
   return lines.join('\n');
@@ -119,5 +124,5 @@ function parseProviderResponse(raw, opts = {}) {
 module.exports = {
   CATEGORIES, URGENCIES, TONES, DEFAULTS,
   buildPrompt, buildDraftPrompt, parseProviderResponse, extractJsonBlock,
-  SYSTEM_PROMPT
+  SYSTEM_PROMPT, BODY_SNIPPET_LEN
 };
