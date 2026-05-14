@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sketch 002 — Email Rows & Badge States</title>
+<link rel="stylesheet" href="../themes/default.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Literata:ital,wght@0,400;0,500;1,400&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; background: var(--color-bg); font-family: var(--font-sans); color: var(--color-text); }
+body { padding-top: 48px; }
+
+/* ── Variant Nav ── */
+#variant-nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 9998;
+  background: var(--color-bg);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+  padding: 8px 16px;
+  display: flex; gap: 8px; align-items: center;
+  font-family: var(--font-mono); font-size: 12px;
+}
+.variant-tab {
+  padding: 6px 16px; border: none; border-radius: var(--radius-full);
+  background: var(--color-bg); cursor: pointer;
+  box-shadow: var(--shadow-convex-sm);
+  font-family: var(--font-mono); font-size: 12px; color: var(--color-text-secondary);
+  transition: all 0.15s ease;
+}
+.variant-tab:hover { box-shadow: var(--shadow-hover); color: var(--color-text); }
+.variant-tab.active { box-shadow: var(--shadow-pressed); color: var(--color-primary); }
+.variant-label { color: var(--color-text-muted); margin-right: 4px; }
+
+.variant { display: none; height: calc(100vh - 48px); overflow-y: auto; }
+.variant.active { display: block; }
+
+/* ── Shared layout: Floating Panels (Variant B winner from 001) ── */
+.app-shell {
+  display: grid;
+  grid-template-columns: 200px 320px 1fr;
+  height: calc(100vh - 48px);
+  background: var(--color-bg);
+  padding: var(--space-4);
+  gap: var(--space-4);
+}
+
+/* Left nav */
+.left-nav {
+  border-radius: var(--radius-xl);
+  background: var(--color-bg);
+  box-shadow: var(--shadow-convex-lg);
+  padding: var(--space-4) var(--space-3);
+  display: flex; flex-direction: column;
+}
+.brand {
+  font-size: var(--text-base); font-weight: 700; color: var(--color-text);
+  padding: var(--space-3) var(--space-3) var(--space-5);
+  letter-spacing: -0.02em;
+}
+.nav-item {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md); cursor: pointer;
+  font-size: var(--text-sm); color: var(--color-text-secondary);
+  transition: all 0.15s ease;
+}
+.nav-item:hover { color: var(--color-text); }
+.nav-item.active {
+  color: var(--color-primary);
+  box-shadow: var(--shadow-pressed);
+  background: var(--color-bg);
+}
+.nav-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-primary); flex-shrink: 0; }
+.nav-count {
+  margin-left: auto; font-family: var(--font-mono); font-size: 10px;
+  background: var(--color-primary-glow); color: var(--color-primary);
+  padding: 2px 6px; border-radius: var(--radius-full);
+}
+
+/* Inbox panel */
+.inbox-panel {
+  border-radius: var(--radius-xl);
+  background: var(--color-bg);
+  box-shadow: var(--shadow-convex-lg);
+  overflow: hidden; display: flex; flex-direction: column;
+}
+.inbox-title {
+  padding: var(--space-4) var(--space-4) var(--space-3);
+  font-size: var(--text-xs); font-family: var(--font-mono);
+  text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--color-text-muted);
+  display: flex; align-items: center; gap: var(--space-2);
+}
+.email-list { overflow-y: auto; flex: 1; }
+
+/* Detail panel */
+.detail-panel {
+  border-radius: var(--radius-xl);
+  background: var(--color-bg);
+  box-shadow: var(--shadow-convex-lg);
+  overflow: hidden; display: flex; flex-direction: column;
+}
+.detail-header { padding: var(--space-5) var(--space-6); }
+.detail-subject { font-size: var(--text-xl); font-weight: 700; color: var(--color-text); line-height: 1.3; margin-bottom: var(--space-3); }
+.detail-from-row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--color-bg); box-shadow: var(--shadow-convex-sm);
+  display: flex; align-items: center; justify-content: center;
+  font-size: var(--text-sm); font-weight: 700; color: var(--color-primary); flex-shrink: 0;
+}
+.detail-from-name { font-weight: 600; font-size: var(--text-sm); }
+.detail-from-email { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-muted); }
+.ai-summary-box { padding: 0 var(--space-6) var(--space-3); }
+.ai-summary-label { font-family: var(--font-mono); font-size: 10px; color: var(--color-primary); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: var(--space-1); }
+.ai-summary-text { font-size: var(--text-sm); color: var(--color-text-secondary); line-height: 1.5; }
+.detail-body { padding: var(--space-4) var(--space-6); font-family: var(--font-serif); font-size: var(--text-sm); line-height: 1.75; color: var(--color-text); flex: 1; overflow-y: auto; }
+.detail-body p { margin-bottom: var(--space-3); }
+
+/* Reply area */
+.reply-area { padding: var(--space-3) var(--space-6) var(--space-4); }
+.reply-box {
+  border-radius: var(--radius-lg);
+  background: var(--color-bg);
+  box-shadow: var(--shadow-concave-sm);
+  padding: var(--space-3) var(--space-4);
+}
+.reply-label {
+  font-family: var(--font-mono); font-size: 10px;
+  color: var(--color-primary); text-transform: uppercase; letter-spacing: 0.08em;
+  margin-bottom: var(--space-2); display: flex; align-items: center; gap: var(--space-2);
+}
+.pulse-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--color-primary);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%,100% { opacity:1; transform:scale(1); }
+  50%      { opacity:0.4; transform:scale(0.8); }
+}
+.reply-textarea {
+  width: 100%; min-height: 80px;
+  border: none; outline: none; resize: none;
+  background: transparent; color: var(--color-text);
+  font-family: var(--font-serif); font-size: var(--text-sm); line-height: 1.6;
+}
+.reply-textarea:disabled { opacity: 0.45; cursor: not-allowed; }
+.action-row { display: flex; gap: var(--space-2); margin-top: var(--space-2); }
+.btn {
+  padding: var(--space-2) var(--space-4);
+  border: none; border-radius: var(--radius-full);
+  font-family: var(--font-sans); font-size: var(--text-sm); font-weight: 600;
+  cursor: pointer; transition: all 0.15s ease;
+}
+.btn-primary { background: var(--color-bg); color: var(--color-primary); box-shadow: var(--shadow-convex); }
+.btn-primary:hover { box-shadow: var(--shadow-hover); }
+.btn-primary:active { box-shadow: var(--shadow-pressed); }
+.btn-ghost { background: transparent; color: var(--color-text-secondary); box-shadow: none; }
+.btn-ghost:hover { color: var(--color-text); }
+
+/* ── BADGES (shared) ── */
+.badge {
+  display: inline-flex; align-items: center;
+  padding: 2px 8px; border-radius: var(--radius-full);
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  letter-spacing: 0.05em; text-transform: uppercase; white-space: nowrap; flex-shrink: 0;
+}
+.badge-ai       { background: rgba(107,115,232,0.12); color: var(--color-primary); }
+.badge-urgent   { background: rgba(224,80,80,0.12);   color: var(--color-danger); }
+.badge-fyi      { background: rgba(47,158,109,0.12);  color: var(--color-success); }
+.badge-meeting  { background: rgba(217,119,6,0.12);   color: var(--color-amber); }
+.badge-rule     { background: rgba(160,174,192,0.15); color: var(--color-text-secondary); }
+
+/* ── Variant-specific badge-failed and row styles ── */
+
+/* Variant A: FAILED badge as convex pill (raised) */
+.va .badge-failed {
+  background: var(--color-bg);
+  color: var(--color-danger);
+  box-shadow: var(--shadow-convex-sm);
+  border: none;
+}
+
+/* Variant B: FAILED badge as standard flat pill with border */
+.vb .badge-failed {
+  background: rgba(224,80,80,0.12);
+  color: var(--color-danger);
+  border: 1px solid rgba(224,80,80,0.3);
+}
+
+/* Variant C: FAILED badge as concave pressed pill */
+.vc .badge-failed {
+  background: var(--color-bg);
+  color: var(--color-danger);
+  box-shadow: var(--shadow-concave-sm);
+  border: none;
+}
+
+/* ── Variant A: Convex row cards ── */
+.va .email-list { padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); }
+.va .email-row {
+  border-radius: var(--radius-lg);
+  background: var(--color-bg);
+  box-shadow: var(--shadow-convex-sm);
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.va .email-row:hover { box-shadow: var(--shadow-hover); }
+.va .email-row.selected {
+  box-shadow: var(--shadow-pressed);
+  background: var(--color-bg);
+}
+.va .email-row.selected .email-subject { color: var(--color-primary); }
+
+/* ── Variant B: Flat rows — selected becomes convex ── */
+.vb .email-list { padding: 0; }
+.vb .email-row {
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-subtle);
+  transition: all 0.15s ease;
+  margin: 0;
+}
+.vb .email-row:hover { background: rgba(0,0,0,0.025); }
+.vb .email-row.selected {
+  margin: var(--space-1) var(--space-2);
+  border-radius: var(--radius-md);
+  border-bottom: none;
+  box-shadow: var(--shadow-convex-sm);
+  background: var(--color-bg);
+}
+.vb .email-row.selected .email-subject { color: var(--color-primary); }
+
+/* ── Variant C: Concave row slots ── */
+.vc .email-list { padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); }
+.vc .email-row {
+  border-radius: var(--radius-lg);
+  background: var(--color-bg);
+  box-shadow: var(--shadow-concave-sm);
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.vc .email-row:hover { box-shadow: inset 3px 3px 8px #c8c8c8, inset -3px -3px 8px #f8f8f8; }
+.vc .email-row.selected {
+  box-shadow: inset 4px 4px 10px #c0c0c0, inset -4px -4px 10px #ffffff;
+  background: rgba(107,115,232,0.04);
+}
+.vc .email-row.selected .email-subject { color: var(--color-primary); }
+
+/* Email content */
+.email-subject { font-size: var(--text-sm); font-weight: 600; color: var(--color-text); line-height: 1.3; }
+.email-from    { font-size: var(--text-xs); color: var(--color-text-secondary); margin-top: 2px; }
+.email-preview { font-size: var(--text-xs); color: var(--color-text-muted); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.email-meta    { display: flex; align-items: center; gap: var(--space-2); margin-bottom: 4px; flex-wrap: wrap; }
+.email-time    { font-family: var(--font-mono); font-size: 10px; color: var(--color-text-muted); margin-left: auto; }
+.unread-dot    { width: 6px; height: 6px; border-radius: 50%; background: var(--color-primary); flex-shrink: 0; }
+
+/* State-cycling strip */
+.state-strip {
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+  background: rgba(0,0,0,0.04); border-bottom: 1px solid var(--border-subtle);
+  font-family: var(--font-mono); font-size: 11px; color: var(--color-text-muted);
+}
+.state-btn {
+  padding: 3px 10px; border: none; border-radius: var(--radius-full);
+  background: var(--color-bg); box-shadow: var(--shadow-convex-sm);
+  cursor: pointer; font-family: var(--font-mono); font-size: 11px;
+  color: var(--color-text-secondary); transition: all 0.15s ease;
+}
+.state-btn:hover { box-shadow: var(--shadow-hover); color: var(--color-text); }
+.state-btn.active { box-shadow: var(--shadow-pressed); color: var(--color-primary); }
+</style>
+</head>
+<body>
+
+<div id="variant-nav">
+  <span class="variant-label">Sketch 002 ·</span>
+  <button class="variant-tab active" onclick="showVariant('a',this)">A: Convex Row Cards</button>
+  <button class="variant-tab" onclick="showVariant('b',this)">B: Flat Rows → Convex on Select</button>
+  <button class="variant-tab" onclick="showVariant('c',this)">C: Concave Row Slots</button>
+  <span style="margin-left:auto;color:var(--color-text-muted);font-size:11px;">Email Rows &amp; Badge States</span>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     VARIANT A — Convex Row Cards
+     Each email = its own raised pill/card
+     ═══════════════════════════════════════════ -->
+<div id="variant-a" class="variant active va">
+  <div class="app-shell">
+    <div class="left-nav">
+      <div class="brand">✉ IntelliMail</div>
+      <nav style="display:flex;flex-direction:column;gap:4px;padding:0 4px;flex:1;">
+        <div class="nav-item active"><span class="nav-dot"></span>Inbox<span class="nav-count">12</span></div>
+        <div class="nav-item">Sent</div>
+        <div class="nav-item">Drafts<span class="nav-count" style="background:rgba(224,80,80,0.12);color:var(--color-danger);">3</span></div>
+        <div class="nav-item">Financial</div>
+        <div class="nav-item">Travel</div>
+      </nav>
+      <div style="padding:8px 4px;">
+        <button class="btn btn-primary" style="width:100%;display:flex;justify-content:center;">Compose</button>
+      </div>
+    </div>
+    <div class="inbox-panel">
+      <div class="inbox-title">Inbox <span style="opacity:0.5;">·</span> 12 unread</div>
+      <div class="email-list" id="a-list"></div>
+    </div>
+    <div class="detail-panel" id="a-detail"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     VARIANT B — Flat rows, convex on select
+     Rows are flat dividers; selected row pops
+     ═══════════════════════════════════════════ -->
+<div id="variant-b" class="variant vb">
+  <div class="app-shell">
+    <div class="left-nav">
+      <div class="brand">✉ IntelliMail</div>
+      <nav style="display:flex;flex-direction:column;gap:4px;padding:0 4px;flex:1;">
+        <div class="nav-item active"><span class="nav-dot"></span>Inbox<span class="nav-count">12</span></div>
+        <div class="nav-item">Sent</div>
+        <div class="nav-item">Drafts<span class="nav-count" style="background:rgba(224,80,80,0.12);color:var(--color-danger);">3</span></div>
+        <div class="nav-item">Financial</div>
+        <div class="nav-item">Travel</div>
+      </nav>
+      <div style="padding:8px 4px;">
+        <button class="btn btn-primary" style="width:100%;display:flex;justify-content:center;">Compose</button>
+      </div>
+    </div>
+    <div class="inbox-panel">
+      <div class="inbox-title">Inbox <span style="opacity:0.5;">·</span> 12 unread</div>
+      <div class="email-list" id="b-list"></div>
+    </div>
+    <div class="detail-panel" id="b-detail"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     VARIANT C — Concave Row Slots
+     Each email = a pressed slot/notch
+     ═══════════════════════════════════════════ -->
+<div id="variant-c" class="variant vc">
+  <div class="app-shell">
+    <div class="left-nav">
+      <div class="brand">✉ IntelliMail</div>
+      <nav style="display:flex;flex-direction:column;gap:4px;padding:0 4px;flex:1;">
+        <div class="nav-item active"><span class="nav-dot"></span>Inbox<span class="nav-count">12</span></div>
+        <div class="nav-item">Sent</div>
+        <div class="nav-item">Drafts<span class="nav-count" style="background:rgba(224,80,80,0.12);color:var(--color-danger);">3</span></div>
+        <div class="nav-item">Financial</div>
+        <div class="nav-item">Travel</div>
+      </nav>
+      <div style="padding:8px 4px;">
+        <button class="btn btn-primary" style="width:100%;display:flex;justify-content:center;">Compose</button>
+      </div>
+    </div>
+    <div class="inbox-panel">
+      <div class="inbox-title">Inbox <span style="opacity:0.5;">·</span> 12 unread</div>
+      <div class="email-list" id="c-list"></div>
+    </div>
+    <div class="detail-panel" id="c-detail"></div>
+  </div>
+</div>
+
+<!-- Sketch Toolbar -->
+<div id="sketch-tools" style="position:fixed;bottom:12px;right:12px;z-index:9999;font-family:system-ui;font-size:11px;background:rgba(30,30,30,0.85);color:white;padding:8px 12px;border-radius:10px;opacity:0.35;transition:opacity 0.2s;display:flex;gap:8px;align-items:center;" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.35'">
+  <span style="opacity:0.6;">Theme:</span>
+  <select onchange="document.querySelector('link[href*=themes]').href='../themes/'+this.value+'.css'" style="background:rgba(255,255,255,0.1);border:none;color:white;font-size:11px;cursor:pointer;border-radius:4px;padding:2px 4px;">
+    <option value="default">Neomorphism White</option>
+  </select>
+  <span style="opacity:0.4;">|</span>
+  <span style="opacity:0.6;">State:</span>
+  <button onclick="cycleDetailState('normal')" style="background:rgba(255,255,255,0.15);border:none;color:white;cursor:pointer;padding:2px 6px;border-radius:4px;font-size:11px;">Normal</button>
+  <button onclick="cycleDetailState('generating')" style="background:rgba(255,255,255,0.15);border:none;color:white;cursor:pointer;padding:2px 6px;border-radius:4px;font-size:11px;">Generating…</button>
+  <button onclick="cycleDetailState('failed')" style="background:rgba(224,80,80,0.5);border:none;color:white;cursor:pointer;padding:2px 6px;border-radius:4px;font-size:11px;">FAILED email</button>
+</div>
+
+<script>
+const EMAILS = [
+  { id:1, from:'Sarah Chen', from_email:'sarah.chen@acme.com', subject:'Q4 Board Deck — please review by Friday', preview:'Hi, I\'ve attached the updated slides. The revenue section changed significantly.', time:'11:47 AM', badgeClass:'badge-ai', category:'ACTION', source:'AI', urgency:'urgent', unread:true },
+  { id:2, from:'Stripe', from_email:'billing@stripe.com', subject:'Invoice #0042 — $149.00 due Dec 31', preview:'Your subscription renews automatically. Invoice attached for your records.', time:'2:14 PM', badgeClass:'badge-ai', category:'FINANCIAL', source:'AI', urgency:'urgent', unread:true },
+  { id:3, from:'no-reply@github.com', from_email:'no-reply@github.com', subject:'[intellimail] CI failed on branch main', preview:'Your push triggered a workflow run that failed. 2 checks failed.', time:'10:22 AM', badgeClass:'badge-fyi', category:'FYI', source:'RULE', unread:false },
+  { id:4, from:'Zoom', from_email:'no-reply@zoom.us', subject:'Your meeting starts in 15 minutes: Team Standup', preview:'Join: https://zoom.us/j/... — Meeting ID: 847 293 1023', time:'9:45 AM', badgeClass:'badge-meeting', category:'MEETING', source:'RULE', unread:false },
+  { id:5, from:'Amazon AWS', from_email:'billing@amazon.com', subject:'Re: Support case #82849 — follow up needed', preview:'We were unable to process your request. Please contact support for assistance.', time:'Yesterday', badgeClass:'badge-failed', category:'FAILED', source:'FAILED', urgency:null, unread:false, failed:true },
+  { id:6, from:'LinkedIn', from_email:'jobs@linkedin.com', subject:'10 new jobs matching "Senior Engineer"', preview:'Opportunities at Anthropic, OpenAI, Stripe, and 7 more companies.', time:'Yesterday', badgeClass:'badge-fyi', category:'FYI', source:'RULE', unread:false },
+];
+
+let selectedId = 1;
+let detailState = 'normal'; // normal | generating | failed-email
+
+function badgeHtml(email, varClass) {
+  const cls = email.failed ? `badge-failed` : email.badgeClass;
+  return `<span class="badge ${cls}">${email.category}</span>`;
+}
+
+function sourceHtml(email) {
+  if (email.failed) return '';
+  const cls = email.source === 'AI' ? 'badge-ai' : 'badge-rule';
+  return `<span class="badge ${cls}" style="font-size:9px;padding:1px 6px;">${email.source}</span>`;
+}
+
+function renderRow(email, v, listId) {
+  const div = document.createElement('div');
+  div.className = 'email-row' + (email.id === selectedId ? ' selected' : '');
+  const isUrgent = email.urgency === 'urgent';
+  div.innerHTML = `
+    <div class="email-meta">
+      ${email.unread ? '<span class="unread-dot"></span>' : ''}
+      ${badgeHtml(email, v)}
+      ${sourceHtml(email)}
+      <span class="email-time">${email.time}</span>
+    </div>
+    <div class="email-from">${email.from}</div>
+    <div class="email-subject" style="${isUrgent && !email.failed?'color:var(--color-danger)':''}">${email.subject}</div>
+    <div class="email-preview">${email.preview}</div>
+  `;
+  div.addEventListener('click', () => {
+    document.querySelectorAll(`#variant-${v} .email-row`).forEach(r=>r.classList.remove('selected'));
+    div.classList.add('selected');
+    selectedId = email.id;
+    if (email.failed) { detailState = 'failed-email'; } else { detailState = 'normal'; }
+    renderDetail(email, `${v}-detail`, v);
+  });
+  document.getElementById(listId).appendChild(div);
+}
+
+function renderDetail(email, detailId, v) {
+  const el = document.getElementById(detailId);
+  const isGenerating = detailState === 'generating' && !email.failed;
+  const isFailed = email.failed || detailState === 'failed-email';
+
+  if (isFailed && email.failed) {
+    el.innerHTML = `
+      <div class="detail-header">
+        <div class="detail-subject" style="color:var(--color-danger);">${email.subject}</div>
+        <div class="detail-from-row">
+          <div class="avatar" style="color:var(--color-danger);">${email.from[0]}</div>
+          <div><div class="detail-from-name">${email.from}</div><div class="detail-from-email">${email.from_email}</div></div>
+          <span class="badge badge-failed">FAILED</span>
+        </div>
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:32px;text-align:center;">
+        <div style="width:56px;height:56px;border-radius:50%;background:var(--color-bg);box-shadow:var(--shadow-concave-sm);display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--color-danger);">✗</div>
+        <div style="color:var(--color-danger);font-weight:700;font-size:var(--text-base);">Classification failed</div>
+        <div style="color:var(--color-text-secondary);font-size:var(--text-sm);line-height:1.6;max-width:320px;">This email couldn't be classified after 3 attempts. It's stored safely — check your API keys in Settings and retry.</div>
+        <button class="btn btn-primary" onclick="this.textContent='Retrying…';setTimeout(()=>{this.textContent='✦ Retry Classification'},1800)">✦ Retry Classification</button>
+        <div style="font-size:var(--text-xs);color:var(--color-text-muted);font-family:var(--font-mono);">email body accessible — only AI classification failed</div>
+      </div>
+      <div class="detail-body" style="border-top:1px solid var(--border-subtle);max-height:180px;overflow-y:auto;opacity:0.6;">
+        <p>${email.preview}</p>
+      </div>
+    `;
+    return;
+  }
+
+  el.innerHTML = `
+    <div class="detail-header" style="border-bottom:1px solid var(--border-subtle);">
+      <div class="detail-subject">${email.subject}</div>
+      <div class="detail-from-row">
+        <div class="avatar">${email.from[0]}</div>
+        <div><div class="detail-from-name">${email.from}</div><div class="detail-from-email">${email.from_email}</div></div>
+        ${badgeHtml(email, v)}
+        ${sourceHtml(email)}
+      </div>
+    </div>
+    <div class="ai-summary-box" style="padding-top:var(--space-4);">
+      <div class="ai-summary-label">AI Summary</div>
+      <div class="ai-summary-text">Sarah is requesting review of the Q4 board deck — specifically the updated revenue section. Deadline is Friday before the board presentation.</div>
+    </div>
+    <div class="detail-body">
+      <p>Hi,</p>
+      <p>I've attached the updated Q4 slides. The revenue section had a significant change — we're now showing the ARR breakdown by segment, which the board specifically asked for last quarter.</p>
+      <p>Please review by Thursday EOD if possible so we have time to incorporate any changes before Friday's presentation.</p>
+      <p>Best,<br>Sarah</p>
+    </div>
+    <div class="reply-area">
+      ${isGenerating ? `
+        <div class="reply-label">
+          <div class="pulse-dot"></div>
+          Generating draft…
+        </div>
+        <div class="reply-box">
+          <textarea class="reply-textarea" disabled placeholder=""></textarea>
+          <div class="action-row">
+            <button class="btn btn-primary" disabled style="opacity:0.5;">✦ Draft with AI</button>
+            <button class="btn btn-ghost" disabled style="opacity:0.5;">Send</button>
+          </div>
+        </div>
+      ` : `
+        <div class="reply-label">Reply</div>
+        <div class="reply-box">
+          <textarea class="reply-textarea" placeholder="Write a reply…" id="${v}-textarea"></textarea>
+          <div class="action-row">
+            <button class="btn btn-primary" onclick="startGenerate('${v}','${detailId}',${email.id})">✦ Draft with AI</button>
+            <button class="btn btn-ghost">Send</button>
+            <button class="btn btn-ghost" style="margin-left:auto;">Discard</button>
+          </div>
+        </div>
+      `}
+    </div>
+  `;
+}
+
+function startGenerate(v, detailId, emailId) {
+  detailState = 'generating';
+  const email = EMAILS.find(e => e.id === emailId);
+  renderDetail(email, detailId, v);
+  setTimeout(() => {
+    detailState = 'normal';
+    renderDetail(email, detailId, v);
+    const ta = document.querySelector(`#${detailId} .reply-textarea`);
+    if (ta) ta.value = `Hi Sarah,\n\nI've reviewed the updated Q4 deck — the revenue breakdown by segment is a great addition. I have a couple of minor comments on slides 12 and 15 that I'll send separately.\n\nOverall, looks strong. Good luck Friday.\n\nBest`;
+  }, 2200);
+}
+
+function cycleDetailState(state) {
+  const email = state === 'failed' ? EMAILS.find(e=>e.failed) : EMAILS.find(e=>e.id===selectedId && !e.failed) || EMAILS[0];
+  detailState = state === 'failed' ? 'failed-email' : state;
+  ['a','b','c'].forEach(v => {
+    if (state === 'failed') {
+      document.querySelectorAll(`#variant-${v} .email-row`).forEach((r,i) => {
+        r.classList.toggle('selected', EMAILS[i]?.failed === true);
+      });
+    }
+    renderDetail(state === 'failed' ? EMAILS.find(e=>e.failed) : email, `${v}-detail`, v);
+  });
+}
+
+function showVariant(id, btn) {
+  document.querySelectorAll('.variant').forEach(v => v.style.display = 'none');
+  document.querySelectorAll('.variant-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('variant-' + id).style.display = 'block';
+  btn.classList.add('active');
+}
+
+// Init
+['a','b','c'].forEach(v => {
+  EMAILS.forEach(e => renderRow(e, v, `${v}-list`));
+  renderDetail(EMAILS[0], `${v}-detail`, v);
+});
+</script>
+</body>
+</html>

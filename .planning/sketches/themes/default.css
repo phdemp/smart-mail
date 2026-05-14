@@ -1,0 +1,69 @@
+/* IntelliMail — Neomorphism White Theme (D-UI-01)
+   Background: #f0f0f0 — soft double shadows — no hard borders
+   Convex = interactive controls | Concave = inputs/displays
+*/
+
+:root {
+  /* Core palette */
+  --color-bg:           #f0f0f0;
+  --color-bg-lighter:   #f5f5f5;
+  --color-bg-darker:    #e8e8e8;
+
+  /* Neomorphic shadow system */
+  --shadow-convex:      6px 6px 12px #d1d1d1, -6px -6px 12px #ffffff;
+  --shadow-convex-sm:   3px 3px 6px #d1d1d1, -3px -3px 6px #ffffff;
+  --shadow-convex-lg:   10px 10px 20px #cbcbcb, -10px -10px 20px #ffffff;
+  --shadow-concave:     inset 4px 4px 8px #d1d1d1, inset -4px -4px 8px #ffffff;
+  --shadow-concave-sm:  inset 2px 2px 5px #d1d1d1, inset -2px -2px 5px #ffffff;
+  --shadow-concave-lg:  inset 6px 6px 14px #cbcbcb, inset -6px -6px 14px #ffffff;
+  --shadow-hover:       8px 8px 16px #c8c8c8, -8px -8px 16px #ffffff;
+  --shadow-pressed:     inset 2px 2px 6px #c8c8c8, inset -2px -2px 6px #ffffff;
+  --shadow-flat:        2px 2px 4px #d1d1d1, -2px -2px 4px #ffffff;
+
+  /* Text */
+  --color-text:         #2d3748;
+  --color-text-secondary: #718096;
+  --color-text-muted:   #a0aec0;
+  --color-text-on-accent: #ffffff;
+
+  /* Accents (restrained — used sparingly in neomorphism) */
+  --color-primary:      #6b73e8;   /* muted indigo */
+  --color-primary-glow: rgba(107,115,232,0.25);
+  --color-danger:       #e05050;   /* muted red for FAILED */
+  --color-danger-soft:  rgba(224,80,80,0.12);
+  --color-warning:      #d97706;
+  --color-success:      #2f9e6d;
+  --color-amber:        #d97706;
+
+  /* Typography — match existing IntelliMail fonts */
+  --font-sans:          'Syne', system-ui, sans-serif;
+  --font-mono:          'IBM Plex Mono', monospace;
+  --font-serif:         'Literata', Georgia, serif;
+
+  --text-xs:            0.72rem;
+  --text-sm:            0.84rem;
+  --text-base:          0.94rem;
+  --text-lg:            1.06rem;
+  --text-xl:            1.2rem;
+
+  /* Spacing — 4-point scale */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* Shapes — generous radius; neomorphism needs soft corners */
+  --radius-sm:   8px;
+  --radius-md:   14px;
+  --radius-lg:   20px;
+  --radius-xl:   28px;
+  --radius-full: 9999px;
+
+  /* Border — color only (no hard borders; used for very subtle separators) */
+  --border-subtle: rgba(0,0,0,0.05);
+}

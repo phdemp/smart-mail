@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sketch 001 — Two-Panel Depth Hierarchy</title>
+<link rel="stylesheet" href="../themes/default.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Literata:ital,wght@0,400;0,500;1,400&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; background: var(--color-bg); font-family: var(--font-sans); color: var(--color-text); }
+body { padding-top: 48px; }
+
+/* ── Variant Nav ── */
+#variant-nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 9998;
+  background: var(--color-bg);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  padding: 8px 16px;
+  display: flex; gap: 8px; align-items: center;
+  font-family: var(--font-mono); font-size: 12px;
+}
+.variant-tab {
+  padding: 6px 16px; border: none; border-radius: var(--radius-full);
+  background: var(--color-bg); cursor: pointer;
+  box-shadow: var(--shadow-convex-sm);
+  font-family: var(--font-mono); font-size: 12px; color: var(--color-text-secondary);
+  transition: all 0.15s ease;
+}
+.variant-tab:hover { box-shadow: var(--shadow-hover); color: var(--color-text); }
+.variant-tab.active {
+  box-shadow: var(--shadow-pressed);
+  color: var(--color-primary);
+  background: var(--color-bg);
+}
+.variant-label { color: var(--color-text-muted); margin-right: 4px; }
+
+.variant { display: none; height: calc(100vh - 48px); }
+.variant.active { display: flex; }
+
+/* ── Shared email data ── */
+/* Nothing — using inline content */
+
+/* ── SIDEBAR (shared across all variants) ── */
+.sidebar-nav {
+  display: flex; flex-direction: column; gap: var(--space-1);
+  padding: var(--space-4) var(--space-3);
+}
+.nav-item {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md); cursor: pointer;
+  font-size: var(--text-sm); color: var(--color-text-secondary);
+  transition: all 0.15s ease;
+}
+.nav-item:hover { color: var(--color-text); }
+.nav-item.active { color: var(--color-primary); }
+.nav-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--color-primary); flex-shrink: 0;
+}
+.nav-count {
+  margin-left: auto; font-family: var(--font-mono); font-size: 10px;
+  background: var(--color-primary-glow); color: var(--color-primary);
+  padding: 2px 6px; border-radius: var(--radius-full);
+}
+
+/* ── Badges ── */
+.badge {
+  display: inline-flex; align-items: center;
+  padding: 2px 8px; border-radius: var(--radius-full);
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  letter-spacing: 0.05em; text-transform: uppercase;
+  white-space: nowrap; flex-shrink: 0;
+}
+.badge-ai       { background: rgba(107,115,232,0.12); color: var(--color-primary); }
+.badge-urgent   { background: rgba(224,80,80,0.12);   color: var(--color-danger); }
+.badge-fyi      { background: rgba(47,158,109,0.12);  color: var(--color-success); }
+.badge-meeting  { background: rgba(217,119,6,0.12);   color: var(--color-amber); }
+.badge-failed   { background: rgba(224,80,80,0.12);   color: var(--color-danger); border: 1px solid rgba(224,80,80,0.25); }
+.badge-rule     { background: rgba(160,174,192,0.15); color: var(--color-text-secondary); }
+
+/* Email preview content */
+.email-subject { font-size: var(--text-sm); font-weight: 600; color: var(--color-text); line-height: 1.3; }
+.email-from    { font-size: var(--text-xs); color: var(--color-text-secondary); margin-top: 2px; }
+.email-preview { font-size: var(--text-xs); color: var(--color-text-muted); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.email-meta    { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-1); }
+.email-time    { font-family: var(--font-mono); font-size: 10px; color: var(--color-text-muted); margin-left: auto; }
+
+/* Detail panel content */
+.detail-header { padding: var(--space-5) var(--space-6); border-bottom: 1px solid var(--border-subtle); }
+.detail-subject { font-size: var(--text-xl); font-weight: 700; color: var(--color-text); line-height: 1.3; margin-bottom: var(--space-3); }
+.detail-from-row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--color-bg); box-shadow: var(--shadow-convex-sm);
+  display: flex; align-items: center; justify-content: center;
+  font-size: var(--text-sm); font-weight: 700; color: var(--color-primary);
+  flex-shrink: 0;
+}
+.detail-from-name { font-weight: 600; font-size: var(--text-sm); }
+.detail-from-email { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-muted); }
+.detail-body { padding: var(--space-6); font-family: var(--font-serif); font-size: var(--text-base); line-height: 1.75; color: var(--color-text); }
+.detail-body p { margin-bottom: var(--space-4); }
+.ai-summary-box { margin: var(--space-4) var(--space-6); }
+.ai-summary-label { font-family: var(--font-mono); font-size: 10px; color: var(--color-primary); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: var(--space-1); }
+.ai-summary-text { font-size: var(--text-sm); color: var(--color-text-secondary); line-height: 1.5; }
+
+/* Reply area */
+.reply-area { padding: var(--space-4) var(--space-6); margin-top: auto; }
+.reply-label { font-family: var(--font-mono); font-size: 10px; color: var(--color-primary); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: var(--space-2); display: flex; align-items: center; gap: var(--space-2); }
+.pulse-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--color-primary);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%,100% { opacity:1; transform:scale(1); }
+  50%      { opacity:0.4; transform:scale(0.8); }
+}
+.reply-textarea {
+  width: 100%; min-height: 100px;
+  border: none; outline: none; resize: none;
+  background: transparent; color: var(--color-text);
+  font-family: var(--font-serif); font-size: var(--text-sm); line-height: 1.6;
+}
+.reply-textarea:disabled { opacity: 0.45; cursor: not-allowed; }
+.action-row { display: flex; gap: var(--space-2); margin-top: var(--space-3); }
+
+/* Buttons */
+.btn {
+  padding: var(--space-2) var(--space-4);
+  border: none; border-radius: var(--radius-full);
+  font-family: var(--font-sans); font-size: var(--text-sm); font-weight: 600;
+  cursor: pointer; transition: all 0.15s ease;
+}
+.btn-primary {
+  background: var(--color-bg); color: var(--color-primary);
+  box-shadow: var(--shadow-convex);
+}
+.btn-primary:hover { box-shadow: var(--shadow-hover); }
+.btn-primary:active { box-shadow: var(--shadow-pressed); }
+.btn-ghost {
+  background: transparent; color: var(--color-text-secondary);
+  box-shadow: none;
+}
+.btn-ghost:hover { color: var(--color-text); }
+
+/* ── State cycling helper ── */
+.state-cycler {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-bg); border-radius: var(--radius-md);
+  box-shadow: var(--shadow-concave-sm);
+  margin: var(--space-3);
+  font-size: 11px; font-family: var(--font-mono); color: var(--color-text-muted);
+}
+.state-btn {
+  padding: 3px 10px; border: none; border-radius: var(--radius-full);
+  background: var(--color-bg); box-shadow: var(--shadow-convex-sm);
+  cursor: pointer; font-family: var(--font-mono); font-size: 11px;
+  color: var(--color-text-secondary); transition: all 0.15s ease;
+}
+.state-btn:hover { box-shadow: var(--shadow-hover); color: var(--color-text); }
+.state-btn.active { box-shadow: var(--shadow-pressed); color: var(--color-primary); }
+
+/* ════════════════════════════════════════════
+   VARIANT A — Deep-Well: both panels concave
+   ════════════════════════════════════════════ */
+#variant-a .app-shell {
+  display: grid;
+  grid-template-columns: 220px 1fr 1fr;
+  height: 100%;
+  background: var(--color-bg);
+  gap: 0;
+}
+
+/* Left nav column */
+#variant-a .left-nav {
+  padding: var(--space-4) var(--space-3);
+  display: flex; flex-direction: column;
+}
+#variant-a .brand {
+  font-size: var(--text-base); font-weight: 700; color: var(--color-text);
+  padding: var(--space-3) var(--space-3) var(--space-5);
+  letter-spacing: -0.02em;
+}
+#variant-a .nav-item.active {
+  background: var(--color-bg);
+  box-shadow: var(--shadow-pressed);
+}
+
+/* Inbox panel — concave well */
+#variant-a .inbox-panel {
+  margin: var(--space-4) 0 var(--space-4) var(--space-1);
+  border-radius: var(--radius-xl);
+  background: var(--color-bg);
+  box-shadow: var(--shadow-concave-lg);
+  overflow: hidden; display: flex; flex-direction: column;
+}
+#variant-a .inbox-title {
+  padding: var(--space-4) var(--space-4) var(--space-3);
+  font-size: var(--text-xs); font-family: var(--font-mono);
+  text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--color-text-muted);
+}
+#variant-a .email-list { overflow-y: auto; flex: 1; }
+#variant-a .email-row {
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer; border-bottom: 1px solid var(--border-subtle);
+  transition: background 0.12s ease;
+}
+#variant-a .email-row:hover { background: rgba(0,0,0,0.025); }
+#variant-a .email-row.selected { background: rgba(107,115,232,0.07); }
+
+/* Detail panel — concave well */
+#variant-a .detail-panel {
+  margin: var(--space-4) var(--space-4) var(--space-4) var(--space-2);
+  border-radius: var(--radius-xl);
+  background: var(--color-bg);
+  box-shadow: var(--shadow-concave-lg);
+  overflow: hidden; display: flex; flex-direction: column;
+}
+
+/* Reply box — concave within concave (lighter inset) */
+#variant-a .reply-box {
+  margin: 0 var(--space-6) var(--space-5);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg);
+  box-shadow: var(--shadow-concave-sm);
+  padding: var(--space-3) var(--space-4);
+}
+
+/* ════════════════════════════════════════════
+   VARIANT B — Floating Panels: both convex
+   ════════════════════════════════════════════ */
+#variant-b .app-shell {
+  display: grid;
+  grid-template-columns: 200px 1fr 1fr;
+  height: 100%;
+  background: var(--color-bg);
+  padding: var(--space-4);
+  gap: var(--space-4);
+}
+#variant-b .left-nav {
+  border-radius: var(--radius-xl);
+  background: var(--color-bg);
+  box-shadow: var(--shadow-convex-lg);
+  padding: var(--space-4) var(--space-3);
+  display: flex; flex-direction: column;
+}
+#variant-b .brand {
+  font-size: var(--text-base); font-weight: 700; color: var(--color-text);
+  padding: var(--space-3) var(--space-3) var(--space-5);
+  letter-spacing: -0.02em;
+}
+#variant-b .nav-item.active {
+  background: var(--color-bg);
+  box-shadow: var(--shadow-pressed);
+}
+#variant-b .inbox-panel {
+  border-radius: var(--radius-xl);
+  background: var(--color-bg);
+  box-shadow: var(--shadow-convex-lg);
+  overflow: hidden; display: flex; flex-direction: column;
+}
+#variant-b .inbox-title {
+  padding: var(--space-4) var(--space-4) var(--space-3);
+  font-size: var(--text-xs); font-family: var(--font-mono);
+  text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--color-text-muted);
+}
+#variant-b .email-list { overflow-y: auto; flex: 1; }
+#variant-b .email-row {
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer; border-bottom: 1px solid var(--border-subtle);
+  transition: all 0.15s ease;
+}
+#variant-b .email-row:hover { background: rgba(0,0,0,0.025); }
+#variant-b .email-row.selected { background: rgba(107,115,232,0.06); }
+#variant-b .detail-panel {
+  border-radius: var(--radius-xl);
+  background: var(--color-bg);
+  box-shadow: var(--shadow-convex-lg);
+  overflow: hidden; display: flex; flex-direction: column;
+}
+#variant-b .reply-box {
+  margin: 0 var(--space-6) var(--space-5);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg);
+  box-shadow: var(--shadow-concave-sm);
+  padding: var(--space-3) var(--space-4);
+}
+
+/* ════════════════════════════════════════════
+   VARIANT C — Asymmetric:
+   inbox = concave well / detail = convex card
+   ════════════════════════════════════════════ */
+#variant-c .app-shell {
+  display: grid;
+  grid-template-columns: 200px 1fr 1.4fr;
+  height: 100%;
+  background: var(--color-bg);
+  gap: 0;
+}
+#variant-c .left-nav {
+  padding: var(--space-4) var(--space-3);
+  display: flex; flex-direction: column;
+}
+#variant-c .brand {
+  font-size: var(--text-base); font-weight: 700; color: var(--color-text);
+  padding: var(--space-3) var(--space-3) var(--space-5);
+  letter-spacing: -0.02em;
+}
+#variant-c .nav-item.active {
+  background: var(--color-bg);
+  box-shadow: var(--shadow-pressed);
+}
+/* Inbox = concave well (content you scroll through) */
+#variant-c .inbox-panel {
+  margin: var(--space-4) var(--space-2) var(--space-4) 0;
+  border-radius: var(--radius-xl);
+  background: var(--color-bg);
+  box-shadow: var(--shadow-concave-lg);
+  overflow: hidden; display: flex; flex-direction: column;
+}
+#variant-c .inbox-title {
+  padding: var(--space-4) var(--space-4) var(--space-3);
+  font-size: var(--text-xs); font-family: var(--font-mono);
+  text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--color-text-muted);
+}
+#variant-c .email-list { overflow-y: auto; flex: 1; }
+#variant-c .email-row {
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer; border-bottom: 1px solid var(--border-subtle);
+  transition: background 0.12s ease;
+}
+#variant-c .email-row:hover { background: rgba(0,0,0,0.025); }
+#variant-c .email-row.selected { background: rgba(107,115,232,0.07); }
+/* Detail = convex card (content elevated off the surface) */
+#variant-c .detail-panel {
+  margin: var(--space-4) var(--space-4) var(--space-4) 0;
+  border-radius: var(--radius-xl);
+  background: var(--color-bg);
+  box-shadow: var(--shadow-convex-lg);
+  overflow: hidden; display: flex; flex-direction: column;
+}
+#variant-c .reply-box {
+  margin: 0 var(--space-6) var(--space-5);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg);
+  box-shadow: var(--shadow-concave-sm);
+  padding: var(--space-3) var(--space-4);
+}
+</style>
+</head>
+<body>
+
+<!-- Variant Nav -->
+<div id="variant-nav">
+  <span class="variant-label">Sketch 001 ·</span>
+  <button class="variant-tab active" onclick="showVariant('a', this)">A: Deep-Well (both concave)</button>
+  <button class="variant-tab" onclick="showVariant('b', this)">B: Floating Panels (both convex) ★ Selected</button>
+  <button class="variant-tab" onclick="showVariant('c', this)">C: Asymmetric (inbox concave / detail convex)</button>
+  <span style="margin-left:auto;color:var(--color-text-muted);font-size:11px;">Two-Panel Depth Hierarchy</span>
+</div>
+
+<!-- ══════════════════════════════════
+     VARIANT A — Deep-Well
+     ══════════════════════════════════ -->
+<div id="variant-a" class="variant active">
+  <div class="app-shell">
+    <!-- Left nav -->
+    <div class="left-nav">
+      <div class="brand">✉ IntelliMail</div>
+      <nav class="sidebar-nav" style="flex:1;">
+        <div class="nav-item active"><span class="nav-dot"></span>Inbox<span class="nav-count">12</span></div>
+        <div class="nav-item">Sent</div>
+        <div class="nav-item">Drafts<span class="nav-count" style="background:rgba(224,80,80,0.12);color:var(--color-danger);">3</span></div>
+        <div class="nav-item">Financial</div>
+        <div class="nav-item">Travel</div>
+        <div class="nav-item">Meetings</div>
+      </nav>
+      <div style="padding:var(--space-3);">
+        <button class="btn btn-primary" style="width:100%;justify-content:center;display:flex;">Compose</button>
+      </div>
+    </div>
+
+    <!-- Inbox panel (concave) -->
+    <div class="inbox-panel">
+      <div class="inbox-title">Inbox · 12 unread</div>
+      <div class="email-list" id="a-list">
+        <!-- email rows injected by JS -->
+      </div>
+    </div>
+
+    <!-- Detail panel (concave) -->
+    <div class="detail-panel" id="a-detail">
+      <!-- detail injected by JS -->
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     VARIANT B — Floating Panels
+     ══════════════════════════════════ -->
+<div id="variant-b" class="variant">
+  <div class="app-shell">
+    <!-- Left nav (convex card) -->
+    <div class="left-nav">
+      <div class="brand">✉ IntelliMail</div>
+      <nav class="sidebar-nav" style="flex:1;">
+        <div class="nav-item active"><span class="nav-dot"></span>Inbox<span class="nav-count">12</span></div>
+        <div class="nav-item">Sent</div>
+        <div class="nav-item">Drafts<span class="nav-count" style="background:rgba(224,80,80,0.12);color:var(--color-danger);">3</span></div>
+        <div class="nav-item">Financial</div>
+        <div class="nav-item">Travel</div>
+        <div class="nav-item">Meetings</div>
+      </nav>
+      <div style="padding:var(--space-3);">
+        <button class="btn btn-primary" style="width:100%;justify-content:center;display:flex;">Compose</button>
+      </div>
+    </div>
+
+    <!-- Inbox panel (convex card) -->
+    <div class="inbox-panel">
+      <div class="inbox-title">Inbox · 12 unread</div>
+      <div class="email-list" id="b-list"></div>
+    </div>
+
+    <!-- Detail panel (convex card) -->
+    <div class="detail-panel" id="b-detail"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     VARIANT C — Asymmetric
+     ══════════════════════════════════ -->
+<div id="variant-c" class="variant">
+  <div class="app-shell">
+    <!-- Left nav (flat) -->
+    <div class="left-nav">
+      <div class="brand">✉ IntelliMail</div>
+      <nav class="sidebar-nav" style="flex:1;">
+        <div class="nav-item active"><span class="nav-dot"></span>Inbox<span class="nav-count">12</span></div>
+        <div class="nav-item">Sent</div>
+        <div class="nav-item">Drafts<span class="nav-count" style="background:rgba(224,80,80,0.12);color:var(--color-danger);">3</span></div>
+        <div class="nav-item">Financial</div>
+        <div class="nav-item">Travel</div>
+        <div class="nav-item">Meetings</div>
+      </nav>
+      <div style="padding:var(--space-3);">
+        <button class="btn btn-primary" style="width:100%;justify-content:center;display:flex;">Compose</button>
+      </div>
+    </div>
+
+    <!-- Inbox panel (concave) -->
+    <div class="inbox-panel">
+      <div class="inbox-title">Inbox · 12 unread</div>
+      <div class="email-list" id="c-list"></div>
+    </div>
+
+    <!-- Detail panel (convex card — elevated) -->
+    <div class="detail-panel" id="c-detail"></div>
+  </div>
+</div>
+
+<!-- Sketch Toolbar -->
+<div id="sketch-tools" style="position:fixed;bottom:12px;right:12px;z-index:9999;font-family:system-ui;font-size:11px;background:rgba(30,30,30,0.85);color:white;padding:8px 12px;border-radius:10px;opacity:0.35;transition:opacity 0.2s;display:flex;gap:8px;align-items:center;" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.35'">
+  <span style="opacity:0.6;">Theme:</span>
+  <select onchange="document.querySelector('link[href*=themes]').href='../themes/'+this.value+'.css'" style="background:rgba(255,255,255,0.1);border:none;color:white;font-size:11px;cursor:pointer;border-radius:4px;padding:2px 4px;">
+    <option value="default">Neomorphism White</option>
+  </select>
+  <span style="opacity:0.4;margin:0 2px;">|</span>
+  <span style="opacity:0.6;">Viewport:</span>
+  <button onclick="setViewport(1280)" style="background:rgba(255,255,255,0.15);border:none;color:white;cursor:pointer;padding:2px 6px;border-radius:4px;font-size:11px;">Desktop</button>
+  <button onclick="setViewport(768)" style="background:rgba(255,255,255,0.15);border:none;color:white;cursor:pointer;padding:2px 6px;border-radius:4px;font-size:11px;">Tablet</button>
+</div>
+
+<script>
+// ── Shared email data (realistic IntelliMail content) ──
+const EMAILS = [
+  { id:1, from:'Stripe', from_email:'billing@stripe.com', subject:'Invoice #0042 — $149.00 due Dec 31', preview:'Your subscription renews automatically. Invoice attached.', time:'2:14 PM', badge:'badge-ai', category:'FINANCIAL', source:'AI', urgency:'urgent' },
+  { id:2, from:'Sarah Chen', from_email:'sarah.chen@acme.com', subject:'Q4 Board Deck — please review by Friday', preview:'Hi, I\'ve attached the updated slides. The revenue section changed.', time:'11:47 AM', badge:'badge-ai', category:'ACTION', source:'AI', urgency:'urgent' },
+  { id:3, from:'no-reply@github.com', from_email:'no-reply@github.com', subject:'[intellimail] CI failed on branch main', preview:'Your push triggered a workflow run that failed. 2 checks failed.', time:'10:22 AM', badge:'badge-fyi', category:'FYI', source:'RULE' },
+  { id:4, from:'Zoom', from_email:'no-reply@zoom.us', subject:'Your meeting starts in 15 minutes: Team Standup', preview:'Join: https://zoom.us/j/... — Meeting ID: 847 293 1023', time:'9:45 AM', badge:'badge-meeting', category:'MEETING', source:'RULE' },
+  { id:5, from:'Amazon AWS', from_email:'billing@amazon.com', subject:'Re: Support case #82849 — follow up', preview:'Thank you for your response. We\'ve reviewed your case.', time:'Yesterday', badge:'badge-failed', category:'FAILED', source:'FAILED', failed:true },
+  { id:6, from:'LinkedIn', from_email:'jobs@linkedin.com', subject:'10 new jobs matching "Senior Engineer"', preview:'See jobs at Anthropic, OpenAI, Stripe, and 7 more companies.', time:'Yesterday', badge:'badge-fyi', category:'FYI', source:'RULE' },
+];
+const SELECTED_EMAIL = EMAILS[1]; // Sarah Chen email selected by default
+
+// ── Render helpers ──
+function badgeHtml(email) {
+  if (email.failed) return `<span class="badge badge-failed">FAILED</span>`;
+  return `<span class="badge ${email.badge}">${email.category}</span>`;
+}
+function sourceHtml(email) {
+  const cls = email.source === 'AI' ? 'badge-ai' : 'badge-rule';
+  return `<span class="badge ${cls}" style="font-size:9px;padding:1px 6px;">${email.source}</span>`;
+}
+
+function renderEmailRow(email, variantId, containerId) {
+  const isSelected = email.id === SELECTED_EMAIL.id;
+  const div = document.createElement('div');
+  div.className = 'email-row' + (isSelected ? ' selected' : '');
+  div.innerHTML = `
+    <div class="email-meta">
+      ${badgeHtml(email)}
+      ${sourceHtml(email)}
+      <span class="email-time">${email.time}</span>
+    </div>
+    <div class="email-from">${email.from}</div>
+    <div class="email-subject" style="${email.urgency==='urgent'?'color:var(--color-danger)':''}">${email.subject}</div>
+    <div class="email-preview">${email.preview}</div>
+  `;
+  div.addEventListener('click', () => {
+    document.querySelectorAll(`#${variantId} .email-row`).forEach(r => r.classList.remove('selected'));
+    div.classList.add('selected');
+    renderDetail(email, `${variantId}-detail`, variantId);
+  });
+  document.getElementById(containerId).appendChild(div);
+}
+
+function renderDetail(email, containerId, variantId) {
+  const el = document.getElementById(containerId);
+  const isGenerating = email.id === SELECTED_EMAIL.id && window[`${variantId}_generating`];
+  const isFailed = email.failed;
+
+  el.innerHTML = `
+    <div class="detail-header">
+      <div class="detail-subject">${email.subject}</div>
+      <div class="detail-from-row">
+        <div class="avatar">${email.from[0].toUpperCase()}</div>
+        <div>
+          <div class="detail-from-name">${email.from}</div>
+          <div class="detail-from-email">${email.from_email}</div>
+        </div>
+        ${badgeHtml(email)}
+        ${sourceHtml(email)}
+      </div>
+    </div>
+    ${isFailed ? `
+    <div style="padding:var(--space-5) var(--space-6);display:flex;flex-direction:column;align-items:center;gap:var(--space-3);color:var(--color-text-muted);font-size:var(--text-sm);text-align:center;flex:1;">
+      <div style="width:48px;height:48px;border-radius:50%;background:var(--color-bg);box-shadow:var(--shadow-concave-sm);display:flex;align-items:center;justify-content:center;font-size:20px;">✗</div>
+      <div style="color:var(--color-danger);font-weight:600;">Classification failed</div>
+      <div>This email couldn't be classified after 3 attempts.<br>Check your API keys in Settings.</div>
+      <button class="btn btn-primary" style="margin-top:8px;" onclick="alert('Retry classification…')">Retry</button>
+    </div>
+    ` : `
+    <div class="ai-summary-box">
+      <div class="ai-summary-label">AI Summary</div>
+      <div class="ai-summary-text">${email.preview} — Action required by Friday.</div>
+    </div>
+    <div class="detail-body" style="flex:1;overflow-y:auto;">
+      <p>Hi,</p>
+      <p>${email.preview}</p>
+      <p>Please let me know if you have any questions or need additional context. I'll be available for a quick call if the asynchronous review isn't sufficient.</p>
+      <p>Best,<br>${email.from}</p>
+    </div>
+    <div class="reply-area">
+      ${isGenerating ? `
+      <div class="reply-label">
+        <div class="pulse-dot"></div>
+        Generating draft…
+      </div>
+      ` : `<div class="reply-label" style="opacity:0.6;">Reply</div>`}
+      <div class="${variantId === 'a-detail' || variantId.startsWith(variantId) ? '' : ''}reply-box" style="${variantId.includes('a') || variantId.includes('b') || variantId.includes('c') ? '' : ''}">
+        <textarea class="reply-textarea" placeholder="Write a reply…" ${isGenerating ? 'disabled' : ''} style="background:transparent;">${isGenerating ? '' : ''}</textarea>
+        <div class="action-row">
+          <button class="btn btn-primary" onclick="triggerGenerate('${variantId}','${containerId}','${email.id}')">✦ Draft with AI</button>
+          <button class="btn btn-ghost">Send</button>
+          <button class="btn btn-ghost" style="margin-left:auto;">Discard</button>
+        </div>
+      </div>
+    </div>
+    `}
+  `;
+}
+
+function triggerGenerate(variantId, containerId, emailId) {
+  window[`${variantId}_generating`] = true;
+  // Find email
+  const email = EMAILS.find(e => e.id == emailId) || SELECTED_EMAIL;
+  renderDetail({...email}, containerId, variantId);
+  setTimeout(() => {
+    window[`${variantId}_generating`] = false;
+    renderDetail({...email}, containerId, variantId);
+    const ta = document.querySelector(`#${containerId} .reply-textarea`);
+    if (ta) ta.value = `Thank you for sharing the updated Q4 board deck. I've reviewed the revenue section changes and have a few comments I'd like to discuss. Are you available for a 30-minute call Thursday afternoon? I want to make sure we're aligned before the board presentation on Friday.\n\nBest regards`;
+  }, 2200);
+}
+
+// ── Variant switching ──
+function showVariant(id, btn) {
+  document.querySelectorAll('.variant').forEach(v => v.style.display = 'none');
+  document.querySelectorAll('.variant-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('variant-' + id).style.display = 'flex';
+  btn.classList.add('active');
+}
+
+// ── Populate all three variants ──
+['a','b','c'].forEach(v => {
+  EMAILS.forEach(email => renderEmailRow(email, `variant-${v}`, `${v}-list`));
+  renderDetail(SELECTED_EMAIL, `${v}-detail`, v);
+});
+
+function setViewport(w) {
+  document.querySelectorAll('.app-shell').forEach(el => {
+    if (w === 1280) el.style.maxWidth = '';
+    else el.style.maxWidth = w + 'px';
+  });
+}
+</script>
+</body>
+</html>
