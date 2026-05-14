@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-05-14)
 
 **Core value:** Every email a user receives should be understood by the system: correctly categorized, concisely summarized, and ready for action — without the user having to open it first.
-**Current focus:** Phase 1 — Prompt Quality Baseline
+**Current focus:** Phase 2 — Thread Context
 
 ## Current Position
 
-Phase: 1 of 5 (Prompt Quality Baseline)
-Plan: Not started
+Phase: 2 of 5 (Thread Context)
+Plan: 5 plans created (Wave 0→1→2)
 Status: Ready to execute
-Last activity: 2026-05-14 — Phase 1 planned: 3 plans in 3 waves
+Last activity: 2026-05-14 — Phase 2 planned; 5 plans in 2 waves (+ Wave 0); all 7 THREAD requirements covered
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██████████] 90%
 
 ## Performance Metrics
 
