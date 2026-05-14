@@ -21,10 +21,16 @@ async function call(email, opts, cfg) {
         model: cfg.model || 'deepseek-chat',
         temperature: opts.temperature || 0.1,
         response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: opts.mode === 'draft' ? buildDraftPrompt(email, opts) : buildPrompt(email, opts) }
-        ]
+        // WR-09: Do not send the classification SYSTEM_PROMPT when mode is 'draft'.
+        // Sending it as the system message tells the model to return the classification
+        // JSON schema, which conflicts with the draft-generation instruction and causes
+        // the model to return a JSON object instead of a prose reply.
+        messages: opts.mode === 'draft'
+          ? [{ role: 'user', content: buildDraftPrompt(email, opts) }]
+          : [
+              { role: 'system', content: SYSTEM_PROMPT },
+              { role: 'user', content: buildPrompt(email, opts) }
+            ]
       }),
       signal: controller.signal
     });
