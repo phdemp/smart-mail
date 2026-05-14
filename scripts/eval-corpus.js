@@ -166,11 +166,22 @@ if (mode === '--score') {
     results.byCategory[cat] = { correct: 0, total: 0 };
   }
 
+  // WR-08: Parse the combined 'from' field (e.g. "Alice <alice@example.com>")
+  // into separate from_name and from_address parts. buildPrompt renders
+  // "From: <name> <address>" so putting the full combined string in from_address
+  // produced garbled output like "From:  <Alice <alice@example.com>>".
+  function splitFrom(from) {
+    const m = (from || '').match(/^(.*?)\s*<([^>]+)>$/);
+    if (m) return { from_name: m[1].trim(), from_address: m[2].trim() };
+    return { from_name: '', from_address: from || '' };
+  }
+
   async function scoreAll() {
     for (const entry of labeled) {
+      const { from_name, from_address } = splitFrom(entry.from);
       const emailObj = {
-        from_name: '',
-        from_address: entry.from || '',
+        from_name,
+        from_address,
         subject: entry.subject || '',
         body_text: entry.body_snippet || ''
       };
