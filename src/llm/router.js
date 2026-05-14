@@ -41,7 +41,16 @@ function createRouter({ providers, getConfig, logger, usage }) {
     return true;
   }
 
-  async function classify(email, opts = {}) {
+  // WR-06: Shared provider-iteration helper used by both classify() and
+  // generateDraft(). Previously the two functions were near-verbatim copies
+  // (~80 lines each), creating drift risk: any bug fix had to be applied
+  // twice. Extracted differences are:
+  //   - callOpts.mode    : 'full' for classify, 'draft' for generateDraft
+  //   - callOpts.maxWaitMs: mode-derived for classify, always 2000 for draft
+  //   - callOpts.temperature: not set for classify (providers default), 0.4 for draft
+  //   - result shape: full parsed object for classify, {draft_reply, _provider} for draft
+  // The shape difference is handled by the optional `mapResult` callback.
+  async function _callProviders(email, opts, { mode, maxWaitMs, extraProviderCfg, mapResult }) {
     const userId = opts.userId;
     const cfg = (getConfig && getConfig(userId)) || { order: [], enabled: [], keys: {}, models: {}, limits: {} };
     const enabledSet = new Set(cfg.enabled || []);
@@ -51,11 +60,12 @@ function createRouter({ providers, getConfig, logger, usage }) {
       const provider = byName.get(name);
       const providerCfg = {
         apiKey: (cfg.keys || {})[name],
-        model:  (cfg.models || {})[name] || provider.defaultModel
+        model:  (cfg.models || {})[name] || provider.defaultModel,
+        ...(extraProviderCfg || {})
       };
 
       if (breakerOpen(userId, name)) {
-        log({ provider: name, mode: opts.mode, outcome: 'skipped_breaker', email_id: email.id, user_id: userId });
+        log({ provider: name, mode, outcome: 'skipped_breaker', email_id: email.id, user_id: userId });
         continue;
       }
 
@@ -64,15 +74,14 @@ function createRouter({ providers, getConfig, logger, usage }) {
       if (Number.isFinite(effectiveRpd)) {
         const count = userId != null ? usageApi.getCount(userId, name) : usageApi.getCount(name);
         if (count >= effectiveRpd) {
-          log({ provider: name, mode: opts.mode, outcome: 'skipped_quota', email_id: email.id, user_id: userId });
+          log({ provider: name, mode, outcome: 'skipped_quota', email_id: email.id, user_id: userId });
           continue;
         }
       }
 
-      const maxWaitMs = opts.mode === 'regen' ? 2000 : 30000;
       const got = await getBucket(userId, provider).acquire(maxWaitMs);
       if (!got) {
-        log({ provider: name, mode: opts.mode, outcome: 'skipped_bucket', email_id: email.id, user_id: userId });
+        log({ provider: name, mode, outcome: 'skipped_bucket', email_id: email.id, user_id: userId });
         continue;
       }
 
@@ -97,11 +106,11 @@ function createRouter({ providers, getConfig, logger, usage }) {
         br.lastError = null;
         br.lastErrorAt = null;
         br.lastErrorMsg = null;
-        log({ provider: name, mode: opts.mode, outcome: 'success', latency_ms: Date.now() - start, email_id: email.id, user_id: userId });
-        return { ...parsed, _provider: name };
+        log({ provider: name, mode, outcome: 'success', latency_ms: Date.now() - start, email_id: email.id, user_id: userId });
+        return mapResult(parsed, name);
       } catch (err) {
         const outcome = classifyError(err);
-        log({ provider: name, mode: opts.mode, outcome, latency_ms: Date.now() - start, email_id: email.id, user_id: userId, err: err.message });
+        log({ provider: name, mode, outcome, latency_ms: Date.now() - start, email_id: email.id, user_id: userId, err: err.message });
         const br = getBreaker(userId, name);
         br.lastError = outcome;
         br.lastErrorAt = Date.now();
@@ -123,84 +132,25 @@ function createRouter({ providers, getConfig, logger, usage }) {
     return null;
   }
 
+  async function classify(email, opts = {}) {
+    // classify uses a longer wait budget (30s) except in regen mode (2s).
+    const maxWaitMs = opts.mode === 'regen' ? 2000 : 30000;
+    return _callProviders(email, opts, {
+      mode: opts.mode || 'full',
+      maxWaitMs,
+      extraProviderCfg: null,
+      mapResult: (parsed, name) => ({ ...parsed, _provider: name })
+    });
+  }
+
   async function generateDraft(email, opts = {}) {
-    const userId = opts.userId;
-    const cfg = (getConfig && getConfig(userId)) || { order: [], enabled: [], keys: {}, models: {}, limits: {} };
-    const enabledSet = new Set(cfg.enabled || []);
-    const order = (cfg.order || []).filter(n => enabledSet.has(n) && byName.has(n));
-
-    for (const name of order) {
-      const provider = byName.get(name);
-      const providerCfg = {
-        apiKey: (cfg.keys || {})[name],
-        model:  (cfg.models || {})[name] || provider.defaultModel,
-        temperature: 0.4
-      };
-
-      if (breakerOpen(userId, name)) {
-        log({ provider: name, mode: 'draft', outcome: 'skipped_breaker', email_id: email.id, user_id: userId });
-        continue;
-      }
-
-      const cfgLim = cfg.limits && cfg.limits[name];
-      const effectiveRpd = (cfgLim && typeof cfgLim.rpd === 'number' && cfgLim.rpd > 0) ? cfgLim.rpd : provider.limits.rpd;
-      if (Number.isFinite(effectiveRpd)) {
-        const count = userId != null ? usageApi.getCount(userId, name) : usageApi.getCount(name);
-        if (count >= effectiveRpd) {
-          log({ provider: name, mode: 'draft', outcome: 'skipped_quota', email_id: email.id, user_id: userId });
-          continue;
-        }
-      }
-
-      const maxWaitMs = 2000;
-      const got = await getBucket(userId, provider).acquire(maxWaitMs);
-      if (!got) {
-        log({ provider: name, mode: 'draft', outcome: 'skipped_bucket', email_id: email.id, user_id: userId });
-        continue;
-      }
-
-      const start = Date.now();
-      try {
-        const rawResult = await provider.call(email, opts, providerCfg);
-        if (rawResult && typeof rawResult === 'object' && rawResult._observedLimits) {
-          observedLimits.set(key(userId, name), rawResult._observedLimits);
-        }
-        const parsed = typeof rawResult === 'string'
-          ? parseProviderResponse(rawResult)
-          : { ...DEFAULTS, ...rawResult };
-        delete parsed._observedLimits;
-        try {
-          if (userId != null) usageApi.increment(userId, name);
-          else usageApi.increment(name);
-        } catch {}
-        const br = getBreaker(userId, name);
-        br.fails = 0;
-        br.lastSuccessAt = Date.now();
-        br.lastError = null;
-        br.lastErrorAt = null;
-        br.lastErrorMsg = null;
-        log({ provider: name, mode: 'draft', outcome: 'success', latency_ms: Date.now() - start, email_id: email.id, user_id: userId });
-        return { draft_reply: parsed.draft_reply || null, _provider: name };
-      } catch (err) {
-        const outcome = classifyError(err);
-        log({ provider: name, mode: 'draft', outcome, latency_ms: Date.now() - start, email_id: email.id, user_id: userId, err: err.message });
-        const br = getBreaker(userId, name);
-        br.lastError = outcome;
-        br.lastErrorAt = Date.now();
-        br.lastErrorMsg = String(err.message || '').slice(0, 300);
-        if (outcome === 'http_401') {
-          br.openedAt = Date.now();
-          br._sessionDisabled = true;
-        } else if (outcome === 'http_429' || outcome === 'http_503') {
-          // transient — don't trip the breaker
-        } else {
-          br.fails += 1;
-          if (br.fails >= BREAKER_FAILS) { br.openedAt = Date.now(); br.fails = 0; }
-        }
-        continue;
-      }
-    }
-    return null;
+    // generateDraft always uses a 2s bucket wait and a higher temperature.
+    return _callProviders(email, opts, {
+      mode: 'draft',
+      maxWaitMs: 2000,
+      extraProviderCfg: { temperature: 0.4 },
+      mapResult: (parsed, name) => ({ draft_reply: parsed.draft_reply || null, _provider: name })
+    });
   }
 
   function classifyError(err) {
