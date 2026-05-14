@@ -168,8 +168,16 @@ test('router keeps per-user buckets separate', async () => {
   assert.equal(r1u2._provider, 'a');  // User 2's bucket is fresh
 });
 
-// --- Wave 0 stub: intentionally RED now, turns GREEN after Plan 02 ships ---
+// --- Turned GREEN in Plan 03 ---
 
 test('router.generateDraft returns draft_reply from first provider', async () => {
-  assert.fail('not yet implemented — add router.generateDraft in Plan 02');
+  const a = fake('a', async () => ({ draft_reply: 'test draft', category: 'other' }));
+  const b = fake('b', async () => ({ draft_reply: 'other draft', category: 'fyi' }));
+  const r = createRouter({
+    providers: [a, b],
+    getConfig: () => ({ order: ['a', 'b'], enabled: ['a', 'b'], keys: {}, models: {} })
+  });
+  const out = await r.generateDraft({ from_address: 'x@y.com', subject: 'z', body_text: '' }, { mode: 'draft' });
+  assert.equal(out.draft_reply, 'test draft');
+  assert.equal(out._provider, 'a');
 });

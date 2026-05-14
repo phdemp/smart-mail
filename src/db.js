@@ -195,6 +195,8 @@ try { db.exec(`ALTER TABLE drafts ADD COLUMN source TEXT`); } catch(e) {}
 // Classification provenance. Values: 'rules' | 'llm' | 'fallback' | NULL (legacy).
 // 'fallback' rows can be bulk-reclassified once the user configures an LLM key.
 try { db.exec(`ALTER TABLE classifications ADD COLUMN source TEXT`); } catch(e) {}
+// low_confidence: 1 when the LLM returned a category not in the enum (Phase 1 PROMPT-07).
+try { db.exec(`ALTER TABLE classifications ADD COLUMN low_confidence INTEGER DEFAULT 0`); } catch(e) {}
 // Backfill: fallback rows are identified by the sentinel summary text.
 try {
   db.prepare("UPDATE classifications SET source = 'fallback' WHERE source IS NULL AND summary = 'Classification unavailable.'").run();

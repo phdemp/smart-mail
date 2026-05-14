@@ -1,4 +1,4 @@
-const { buildPrompt, parseProviderResponse, SYSTEM_PROMPT } = require('./base');
+const { buildPrompt, buildDraftPrompt, parseProviderResponse, SYSTEM_PROMPT } = require('./base');
 
 function urlFor(model) {
   return `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
@@ -24,10 +24,10 @@ async function call(email, opts, cfg) {
       },
       body: JSON.stringify({
         contents: [
-          { role: 'user', parts: [{ text: SYSTEM_PROMPT + '\n\n' + buildPrompt(email, opts) }] }
+          { role: 'user', parts: [{ text: opts.mode === 'draft' ? buildDraftPrompt(email, opts) : SYSTEM_PROMPT + '\n\n' + buildPrompt(email, opts) }] }
         ],
         generationConfig: {
-          temperature: 0.1,
+          temperature: opts.temperature || 0.1,
           responseMimeType: 'application/json'
         }
       }),
