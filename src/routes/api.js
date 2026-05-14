@@ -148,26 +148,32 @@ function buildCfg(q) {
 
 router.get('/api/account/test-imap', async (req, res) => {
   const cfg = buildCfg(req.query);
+  // CR-04: Log only safe fields — never the password or full config object.
   console.log(`[IMAP TEST] host=${cfg.imap_host} port=${cfg.imap_port} tls=${cfg.imap_tls} user=${cfg.username}`);
   try {
     const result = await testImap(cfg);
-    console.log(`[IMAP TEST] result:`, JSON.stringify(result));
+    // CR-04: Strip sensitive fields before serialization — result must never echo passwords.
+    const safeResult = { ok: result.ok, error: result.error };
+    console.log(`[IMAP TEST] result:`, JSON.stringify(safeResult));
     res.json(result);
   } catch(e) {
-    console.error(`[IMAP TEST] exception:`, e.message, e.stack);
+    console.error(`[IMAP TEST] exception:`, e.message);
     res.json({ ok: false, error: e.message });
   }
 });
 
 router.get('/api/account/test-smtp', async (req, res) => {
   const cfg = buildCfg(req.query);
+  // CR-04: Log only safe fields — never the password or full config object.
   console.log(`[SMTP TEST] host=${cfg.smtp_host} port=${cfg.smtp_port} tls=${cfg.smtp_tls} user=${cfg.username}`);
   try {
     const result = await testSmtp(cfg);
-    console.log(`[SMTP TEST] result:`, JSON.stringify(result));
+    // CR-04: Strip sensitive fields before serialization — result must never echo passwords.
+    const safeResult = { ok: result.ok, error: result.error };
+    console.log(`[SMTP TEST] result:`, JSON.stringify(safeResult));
     res.json(result);
   } catch(e) {
-    console.error(`[SMTP TEST] exception:`, e.message, e.stack);
+    console.error(`[SMTP TEST] exception:`, e.message);
     res.json({ ok: false, error: e.message });
   }
 });
