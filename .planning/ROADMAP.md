@@ -44,7 +44,14 @@ Plans:
   2. The assembled thread context never exceeds the 1500-token prior-context budget; messages are truncated from the oldest end when the budget is exceeded
   3. Draft replies reference the actual conversation history, not just the triggering email
   4. Every LLM call emits a structured JSON log entry with provider, user_id, email_id, token_count, outcome, and latency_ms — visible in application logs from day one of this phase
-**Plans**: TBD
+**Plans**: 5 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — Wave 0 test stubs: thread.test.js (new), base.test.js + router.test.js extensions
+- [ ] 02-02-PLAN.md — DB foundation: llm_logs table + 30-day pruning, idx_emails_msgid_user index, imap.js storeEmail raw_headers fix
+- [ ] 02-03-PLAN.md — Thread utility module: src/llm/thread.js (fetchThreadContext, buildThreadContext, stripQuotedReplies)
+- [ ] 02-04-PLAN.md — Prompt injection: base.js opts.threadContext in buildPrompt() and buildDraftPrompt()
+- [ ] 02-05-PLAN.md — Wire-up + logging: classifier.js thread fetch, router.js token_count + llm_logs INSERT
 
 **Risks:**
 - Quoted reply chains inflate token counts dramatically (a 3-message thread can use more tokens than a long single email because every reply quotes all prior messages); the stripping utility (THREAD-03) and budget enforcement (THREAD-05) must both be in place before enabling thread context in production
@@ -105,7 +112,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Prompt Quality Baseline | 0/TBD | Not started | - |
-| 2. Thread Context | 0/TBD | Not started | - |
+| 2. Thread Context | 0/5 | Not started | - |
 | 3. User Correction Loop | 0/TBD | Not started | - |
 | 4. Provider Observability | 0/TBD | Not started | - |
 | 5. AI Output UI | 0/TBD | Not started | - |
