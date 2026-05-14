@@ -167,3 +167,9 @@ test('router keeps per-user buckets separate', async () => {
   const r1u2 = await r.classify(email, { mode: 'regen', userId: 2 });
   assert.equal(r1u2._provider, 'a');  // User 2's bucket is fresh
 });
+
+// --- Wave 0 stub: intentionally RED now, turns GREEN after Plan 02 ships ---
+
+test('router.generateDraft returns draft_reply from first provider', async () => {
+  assert.fail('not yet implemented — add router.generateDraft in Plan 02');
+});
