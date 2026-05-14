@@ -124,3 +124,9 @@ test('rulesClassify still marks an explicit newsletter as fyi', () => {
     llm.router.classify = origClassify;
   }
 });
+
+// --- Wave 0 stub: intentionally RED now, turns GREEN after Plan 03 ships ---
+
+test('classifyEmail stores source="failed" after 3 failed attempts (INFRA-02)', async () => {
+  assert.fail('not yet implemented — add attempt counter in Plan 03');
+});
