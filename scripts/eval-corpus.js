@@ -116,12 +116,19 @@ if (mode === '--score') {
   }
 
   // Determine provider to use
+  // CR-03: Validate against an allowlist before require() to prevent path traversal.
+  // Without this check, EVAL_PROVIDER=../../../etc/passwd would load an arbitrary path.
+  const ALLOWED_PROVIDERS = new Set(['nvidia', 'groq', 'gemini', 'deepseek']);
   const providerName = process.env.EVAL_PROVIDER || 'nvidia';
+  if (!ALLOWED_PROVIDERS.has(providerName)) {
+    console.error(`Unknown provider '${providerName}'. Allowed: ${[...ALLOWED_PROVIDERS].join(', ')}`);
+    process.exit(1);
+  }
   console.log(`Scoring ${labeled.length} labeled emails using provider: ${providerName}`);
   console.log('(Unlabeled/invalid entries skipped: ' + (corpus.length - labeled.length) + ')');
   console.log('');
 
-  // Dynamically load the provider
+  // Dynamically load the provider (safe: providerName validated above)
   let provider;
   try {
     provider = require('../src/llm/providers/' + providerName);
