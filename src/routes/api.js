@@ -24,6 +24,18 @@ function escHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
+// CR-01: Validate URL scheme before inserting into href to prevent javascript: XSS.
+// escHtml alone does not strip "javascript:" URIs; this function only returns a
+// safe URL when the scheme is http or https.
+function safeHref(raw) {
+  if (!raw) return null;
+  try {
+    const u = new URL(raw.startsWith('http') ? raw : 'https://' + raw);
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+    return escHtml(u.href);
+  } catch { return null; }
+}
+
 function smartTime(dateStr) {
   if (!dateStr) return '';
   const d = new Date(dateStr);
@@ -797,7 +809,7 @@ function renderActionZone(cat, email, cls, extracted) {
             </div>` : '').join('')}
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          ${extracted.redeem_url ? `<a class="action-btn btn-primary" href="${escHtml(extracted.redeem_url.startsWith('http') ? extracted.redeem_url : 'https://'+extracted.redeem_url)}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;">🎁 Redeem Now</a>` : ''}
+          ${extracted.redeem_url ? (() => { const h = safeHref(extracted.redeem_url); return h ? `<a class="action-btn btn-primary" href="${h}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;">🎁 Redeem Now</a>` : ''; })() : ''}
           <button class="action-btn btn-ghost"
                   hx-post="/api/emails/${email.id}/read"
                   hx-swap="none"
