@@ -21,6 +21,13 @@ CREATE TABLE IF NOT EXISTS account_config (
   smtp_port INTEGER,
   smtp_tls INTEGER DEFAULT 1,
   username TEXT,
+  -- WR-01: KNOWN RISK — IMAP/SMTP password stored as plaintext SQLite text.
+  -- Full encryption (e.g. AES-256-GCM keyed from CREDENTIAL_KEY env var) is
+  -- out of scope for this phase and requires key-management infrastructure.
+  -- Mitigations in place: (1) server.log is gitignored, (2) credential fields
+  -- are never returned to the client (/api/settings strips them), (3) DB file
+  -- permissions should be restricted to the app user at the OS level.
+  -- TODO: encrypt at rest before any multi-tenant or cloud deployment.
   password TEXT,
   claude_api_key TEXT,
   sync_interval INTEGER DEFAULT 60,
