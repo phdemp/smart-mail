@@ -24,7 +24,12 @@ IntelliMail has a working two-tier AI classifier in production. This milestone r
   3. Every provider returns structured JSON via native output modes; the existing extractJsonBlock() fallback still fires on parse failure without silent errors
   4. Any email that exhausts 3 classification attempts is stored with source: 'failed' and shown as "Classification failed" in the UI — no email silently disappears from the inbox without a visible status
   5. A low_confidence flag is attached to results where the category fell back to the enum default, giving operators a signal without exposing raw scores to users
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Eval infrastructure: eval-corpus.js script, .planning/eval/ placeholders, Wave 0 test stubs
+- [ ] 01-02-PLAN.md — LLM prompt foundation: SYSTEM_PROMPT update, buildDraftPrompt(), parseProviderResponse() hardening
+- [ ] 01-03-PLAN.md — Draft chain + reliability: router.generateDraft(), provider temperature opts, INFRA-02 attempt counter
 
 **Risks:**
 - Prompt changes that improve accuracy on one category boundary can regress another — the eval corpus is the only protection against this; build it first, before touching a single prompt line
