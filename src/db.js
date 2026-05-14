@@ -288,17 +288,20 @@ function getStats(userId) {
   const where = userId != null ? 'AND e.user_id = ?' : '';
   const params = userId != null ? [userId] : [];
 
+  // WR-02: Join condition includes c.user_id = e.user_id to prevent cross-user
+  // data leakage if email AUTOINCREMENT IDs ever reset (e.g. after a data wipe
+  // and re-import). The extra predicate is effectively free given the indexes.
   const rows = db.prepare(`
     SELECT c.category, COUNT(*) as count
     FROM emails e
-    JOIN classifications c ON c.email_id = e.id
+    JOIN classifications c ON c.email_id = e.id AND c.user_id = e.user_id
     WHERE e.is_archived = 0 AND e.is_deleted = 0 AND e.folder = 'INBOX' ${where}
     GROUP BY c.category
   `).all(...params);
 
   const urgentCount = db.prepare(`
     SELECT COUNT(*) as count FROM emails e
-    JOIN classifications c ON c.email_id = e.id
+    JOIN classifications c ON c.email_id = e.id AND c.user_id = e.user_id
     WHERE c.urgency = 'urgent' AND e.is_archived = 0 AND e.is_deleted = 0 AND e.is_read = 0 ${where}
   `).get(...params);
 
