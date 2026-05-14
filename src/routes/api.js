@@ -1130,7 +1130,7 @@ router.get('/api/settings', (req, res) => {
     has_deepseek_key: !!cfg.deepseek_api_key,
     nvidia_model:           cfg.nvidia_model   || 'qwen/qwen3.5-122b-a10b',
     groq_model:             cfg.groq_model     || 'llama-3.3-70b-versatile',
-    gemini_model:           cfg.gemini_model   || 'gemini-flash-latest',
+    gemini_model:           cfg.gemini_model   || 'gemini-1.5-flash-latest',  // IN-03: valid model ID
     deepseek_model:         cfg.deepseek_model || 'deepseek-chat',
     llm_provider_order:     cfg.llm_provider_order    || 'nvidia,groq,gemini,deepseek',
     llm_providers_enabled:  cfg.llm_providers_enabled || 'nvidia,groq,gemini,deepseek',

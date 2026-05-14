@@ -10,7 +10,9 @@ async function call(email, opts, cfg) {
     err.status = 401;
     throw err;
   }
-  const model = cfg.model || 'gemini-flash-latest';
+  // IN-03: 'gemini-flash-latest' is not a valid Google Generative Language API
+  // model ID. The correct versioned name is 'gemini-1.5-flash-latest'.
+  const model = cfg.model || 'gemini-1.5-flash-latest';
   const timeoutMs = cfg.timeoutMs || 30_000;
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), timeoutMs);
@@ -56,7 +58,8 @@ async function call(email, opts, cfg) {
 
 module.exports = {
   name: 'gemini',
-  defaultModel: 'gemini-flash-latest',
+  // IN-03: updated from 'gemini-flash-latest' (invalid) to a known-valid model ID.
+  defaultModel: 'gemini-1.5-flash-latest',
   limits: { rpm: 8, rpd: 450 },
   call
 };

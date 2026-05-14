@@ -100,7 +100,8 @@ const PROVIDER_COLS = [
   ['deepseek_api_key',      'TEXT'],
   ['nvidia_model',          "TEXT DEFAULT 'qwen/qwen3.5-122b-a10b'"],
   ['groq_model',            "TEXT DEFAULT 'llama-3.3-70b-versatile'"],
-  ['gemini_model',          "TEXT DEFAULT 'gemini-flash-latest'"],
+  // IN-03: 'gemini-flash-latest' is not a valid API model ID; updated default.
+  ['gemini_model',          "TEXT DEFAULT 'gemini-1.5-flash-latest'"],
   ['deepseek_model',        "TEXT DEFAULT 'deepseek-chat'"],
   ['llm_provider_order',    "TEXT DEFAULT 'nvidia,groq,gemini,deepseek'"],
   ['llm_providers_enabled', "TEXT DEFAULT 'nvidia,groq,gemini,deepseek'"],
