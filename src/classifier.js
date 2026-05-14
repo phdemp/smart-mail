@@ -235,11 +235,15 @@ function storeClassification(userId, emailId, data) {
       data.low_confidence ? 1 : 0
     );
 
+    // CR-06: Use the sanitized local variables, not the raw data fields.
+    // data.category/data.urgency may contain out-of-enum values (e.g. legacy
+    // 'request' category) — clients listening to SSE events must receive the
+    // same sanitized values that were written to the DB.
     broadcast('classification_done', {
       user_id: userId,
       email_id: emailId,
-      category: data.category,
-      urgency:  data.urgency
+      category: safeCategory,
+      urgency:  safeUrgency
     });
 
     // Create an empty draft row for EVERY email (regardless of category).
