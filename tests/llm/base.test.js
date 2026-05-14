@@ -5,7 +5,8 @@ const {
   buildDraftPrompt,
   parseProviderResponse,
   CATEGORIES,
-  DEFAULTS
+  DEFAULTS,
+  SYSTEM_PROMPT
 } = require('../../src/llm/providers/base');
 
 test('buildPrompt includes sender, subject, and body truncated to 800', () => {
@@ -20,11 +21,6 @@ test('buildPrompt includes sender, subject, and body truncated to 800', () => {
   assert.match(out, /Subject: Invoice #123/);
   assert.ok(out.includes('x'.repeat(800)) && !out.includes('x'.repeat(801)),
     'body should be truncated to 800 chars');
-});
-
-test('buildPrompt in regen mode includes tone instruction', () => {
-  // regen branch removed from buildPrompt in Plan 02 — tone is now handled by buildDraftPrompt
-  assert.fail('regen branch removed from buildPrompt in Plan 02 — delete this test when Plan 02 ships');
 });
 
 test('parseProviderResponse parses clean JSON and normalizes', () => {
@@ -91,34 +87,68 @@ test('parseProviderResponse forces urgent urgency for legal category', () => {
   assert.equal(parseProviderResponse(raw).urgency, 'urgent');
 });
 
-// --- Wave 0 stubs: intentionally RED now, turn GREEN after Plan 02 ships ---
+// --- Wave 0 stubs turned GREEN (Plan 02) ---
 
 // PROMPT-01: buildDraftPrompt exists as a separate function (Call B split)
 test('PROMPT-01: buildDraftPrompt exists and is a function', () => {
-  assert.fail('not yet implemented — Plan 02');
+  assert.equal(typeof buildDraftPrompt, 'function', 'buildDraftPrompt must be exported from base.js');
 });
 
-// PROMPT-02: SYSTEM_PROMPT includes one-liner definitions for all 8 categories
+// PROMPT-01: buildPrompt does not include draft_reply instruction in any mode
+test('buildPrompt does not include draft_reply instruction (Call A only)', () => {
+  const out = buildPrompt({ from_address: 'a@b.com', subject: 'Hi', body_text: 'hello' }, { mode: 'full' });
+  assert.ok(!out.includes('draft_reply'), 'buildPrompt must not include draft_reply after PROMPT-01 split');
+});
+
+// PROMPT-02: SYSTEM_PROMPT has one-liner per category
 test('PROMPT-02: SYSTEM_PROMPT includes one-liner definitions for all 8 categories', () => {
-  assert.fail('not yet implemented — Plan 02');
+  for (const cat of CATEGORIES) {
+    assert.ok(SYSTEM_PROMPT.includes(cat), `SYSTEM_PROMPT must reference category: ${cat}`);
+  }
 });
 
-// PROMPT-05: summary constraint is structural (no character-count limit, references action)
+// PROMPT-05: summary constraint is structural
 test('PROMPT-05: SYSTEM_PROMPT uses structural summary constraint not character-count limit', () => {
-  assert.fail('not yet implemented — Plan 02');
+  assert.ok(!SYSTEM_PROMPT.includes('max 120 chars'), 'old character-count constraint must be removed');
+  assert.ok(SYSTEM_PROMPT.includes('action'), 'structural constraint must reference action');
 });
 
-// PROMPT-07: low_confidence set when category falls back to default due to enum miss
+// PROMPT-07: low_confidence set when category not in enum
 test('PROMPT-07: parseProviderResponse sets low_confidence when category falls back to default', () => {
-  assert.fail('not yet implemented — Plan 02');
+  const r = parseProviderResponse('{"category":"spam_folder","urgency":"normal","summary":"s"}');
+  assert.equal(r.category, 'other');
+  assert.equal(r.low_confidence, true);
 });
 
 // buildDraftPrompt basic structure (Call B prompt)
 test('buildDraftPrompt includes from, subject, and body truncated to ~800', () => {
-  assert.fail('not yet implemented — Plan 02');
+  const r = buildDraftPrompt({
+    from_name: 'Bob', from_address: 'b@c.com',
+    subject: 'Test', body_text: 'x'.repeat(2000)
+  });
+  assert.match(r, /From: Bob/);
+  assert.match(r, /Subject: Test/);
+  assert.ok(r.includes('x'.repeat(800)) && !r.includes('x'.repeat(801)),
+    'body should be truncated to 800 chars');
+});
+
+// buildDraftPrompt tone instruction
+test('buildDraftPrompt includes tone instruction when opts.tone provided', () => {
+  const r = buildDraftPrompt(
+    { from_address: 'a@b.com', subject: 'Hi', body_text: 'hello' },
+    { tone: 'friendly' }
+  );
+  assert.ok(r.includes('friendly'), 'tone instruction must be present when opts.tone is provided');
 });
 
 // PROMPT-03: SYSTEM_PROMPT includes disambiguation examples for the 3 confused pairs
 test('PROMPT-03: SYSTEM_PROMPT includes disambiguation examples for fyi/other, rewards_awards/fyi, meeting_request/other', () => {
-  assert.fail('not yet implemented — Plan 02');
+  ['fyi', 'rewards_awards', 'meeting_request'].forEach(c => {
+    const count = (SYSTEM_PROMPT.match(new RegExp('not ' + c, 'g')) || []).length;
+    assert.ok(count >= 1, c + ' disambiguation missing from SYSTEM_PROMPT');
+  });
+  // Confirm all three 'not X' phrasings are explicitly present
+  assert.ok(SYSTEM_PROMPT.includes('not fyi'), 'SYSTEM_PROMPT must include "not fyi"');
+  assert.ok(SYSTEM_PROMPT.includes('not rewards_awards'), 'SYSTEM_PROMPT must include "not rewards_awards"');
+  assert.ok(SYSTEM_PROMPT.includes('not meeting_request'), 'SYSTEM_PROMPT must include "not meeting_request"');
 });
