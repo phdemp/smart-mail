@@ -2,7 +2,7 @@
 sketch: 002
 name: email-rows-badges
 question: "How do email rows, category badges (incl. FAILED), and the 'Generating…' draft state look in neomorphism?"
-winner: null
+winner: "A"
 tags: [email-rows, badges, loading-state, neomorphism, failed-badge]
 ---
 

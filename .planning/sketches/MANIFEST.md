@@ -17,4 +17,4 @@ Locked from CONTEXT.md (D-UI-01): this direction is not re-evaluated in sketches
 | # | Name | Design Question | Winner | Tags |
 |---|------|----------------|--------|------|
 | 001 | two-panel-depth | How should the two-panel layout establish depth hierarchy in neomorphism white? | B — Floating Panels (both convex, gap between) | layout, neomorphism, depth, inbox |
-| 002 | email-rows-badges | How do email rows, badges (incl. FAILED), and the Generating… state look in neomorphism? | null | email-rows, badges, loading-state, failed-badge |
+| 002 | email-rows-badges | How do email rows, badges (incl. FAILED), and the Generating… state look in neomorphism? | A — Convex Row Cards (each email a raised pill, pressed on select) | email-rows, badges, loading-state, failed-badge |
