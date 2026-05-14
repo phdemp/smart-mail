@@ -49,6 +49,17 @@ async function call(email, opts, cfg) {
     const raw = json?.choices?.[0]?.message?.content || '';
     const parsed = parseProviderResponse(raw);
     return { ...parsed, _observedLimits: observedLimits };
+  } catch (e) {
+    // WR-05: Convert AbortError to a 504 with err.status so the router's
+    // classifyError() correctly identifies it as a timeout (not 'network').
+    // Without err.status the router falls through to the generic 'network'
+    // path and increments the circuit-breaker counter on every timeout.
+    if (e.name === 'AbortError' || /aborted/i.test(e.message || '')) {
+      const err = new Error('DeepSeek timed out after 10s');
+      err.status = 504;
+      throw err;
+    }
+    throw e;
   } finally {
     clearTimeout(t);
   }
