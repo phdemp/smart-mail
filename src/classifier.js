@@ -7,6 +7,8 @@ function setBroadcast(fn) { broadcast = fn; }
 
 // Per-user queue state
 const queues = new Map(); // userId -> { queue: [], processing: false }
+const attempts = new Map(); // `${userId}::${emailId}` -> attemptCount
+const MAX_ATTEMPTS = 3;
 
 function q(userId) {
   let s = queues.get(userId);
@@ -162,6 +164,16 @@ async function classifyEmail(userId, emailId) {
   // pending-count query mirrors this predicate so they don't appear "stuck".
   if (!isInClassificationScope(userId, emailId)) return;
 
+  // Attempt tracking (INFRA-02): cap retries to prevent unbounded API spend during outages.
+  const attemptKey = `${userId}::${emailId}`;
+  const currentAttempts = (attempts.get(attemptKey) || 0) + 1;
+  attempts.set(attemptKey, currentAttempts);
+  if (currentAttempts > MAX_ATTEMPTS) {
+    storeClassification(userId, emailId, { ...fallbackClassification(), source: 'failed' });
+    attempts.delete(attemptKey);
+    return;
+  }
+
   // Tier 1: instant rules
   const rulesCategory = rulesClassify(email);
   if (rulesCategory) {
@@ -169,6 +181,7 @@ async function classifyEmail(userId, emailId) {
     const extracted = rulesExtractedData(rulesCategory, email);
     const sub = email.subject || '';
     const summary = `${email.from_name || email.from_address} sent: ${sub.substring(0, 80)}${sub.length > 80 ? '...' : ''}.`;
+    attempts.delete(attemptKey);
     storeClassification(userId, emailId, {
       category: rulesCategory, urgency, urgency_reason, summary,
       extracted_data: extracted, suggested_tone: 'professional', draft_reply: null,
@@ -181,6 +194,7 @@ async function classifyEmail(userId, emailId) {
   try {
     const routed = await llm.router.classify(email, { mode: 'full', userId });
     if (routed) {
+      attempts.delete(attemptKey);
       storeClassification(userId, emailId, {
         category:       routed.category,
         urgency:        routed.urgency,
@@ -189,7 +203,8 @@ async function classifyEmail(userId, emailId) {
         extracted_data: routed.extracted_data || {},
         suggested_tone: routed.suggested_tone || 'professional',
         draft_reply:    routed.draft_reply    || null,
-        source:         'llm'
+        source:         'llm',
+        low_confidence: routed.low_confidence || false
       });
       return;
     }
@@ -210,13 +225,14 @@ function storeClassification(userId, emailId, data) {
     const safeUrgency  = URGENCIES.includes(data.urgency)   ? data.urgency  : 'normal';
     db.prepare(`
       INSERT OR IGNORE INTO classifications
-      (user_id, email_id, category, urgency, urgency_reason, summary, extracted_data, draft_reply, suggested_tone, source)
-      VALUES (?,?,?,?,?,?,?,?,?,?)
+      (user_id, email_id, category, urgency, urgency_reason, summary, extracted_data, draft_reply, suggested_tone, source, low_confidence)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?)
     `).run(
       userId, emailId, safeCategory, safeUrgency, data.urgency_reason,
       data.summary,
       typeof data.extracted_data === 'string' ? data.extracted_data : JSON.stringify(data.extracted_data || {}),
-      data.draft_reply || null, data.suggested_tone, data.source || null
+      data.draft_reply || null, data.suggested_tone, data.source || null,
+      data.low_confidence ? 1 : 0
     );
 
     broadcast('classification_done', {
@@ -275,7 +291,7 @@ async function generateDraft(userId, emailId) {
   const email = db.prepare('SELECT * FROM emails WHERE id = ? AND user_id = ?').get(emailId, userId);
   if (!email) return null;
   try {
-    const routed = await llm.router.classify(email, { mode: 'regen', userId });
+    const routed = await llm.router.generateDraft(email, { mode: 'draft', userId });
     return routed?.draft_reply || 'Thank you for your email. I will review and respond shortly.';
   } catch {
     return 'Thank you for your email. I will review and respond shortly.';

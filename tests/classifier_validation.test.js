@@ -125,8 +125,41 @@ test('rulesClassify still marks an explicit newsletter as fyi', () => {
   }
 });
 
-// --- Wave 0 stub: intentionally RED now, turns GREEN after Plan 03 ships ---
+// --- Turned GREEN in Plan 03 (INFRA-02) ---
 
 test('classifyEmail stores source="failed" after 3 failed attempts (INFRA-02)', async () => {
-  assert.fail('not yet implemented — add attempt counter in Plan 03');
+  const userId = global.__cvUserId;
+
+  db.prepare(`
+    INSERT INTO emails (user_id, message_id, folder, subject, from_address, body_text, received_at)
+    VALUES (?, 'mid-attempts', 'INBOX', 'test attempts', 'x@x.com', 'body', datetime('now'))
+  `).run(userId);
+  const emailId = db.prepare("SELECT id FROM emails WHERE message_id = 'mid-attempts'").get().id;
+
+  const llm = require('../src/llm');
+  const origClassify = llm.router.classify;
+  llm.router.classify = async () => { throw new Error('provider error'); };
+  try {
+    // Call 1 — increments attempt counter to 1, router throws, fallback stored
+    await classifyEmail(userId, emailId);
+    // Delete the classification row so INSERT OR IGNORE allows re-insertion on next call
+    db.prepare('DELETE FROM classifications WHERE email_id = ?').run(emailId);
+
+    // Call 2 — increments attempt counter to 2, router throws, fallback stored
+    await classifyEmail(userId, emailId);
+    db.prepare('DELETE FROM classifications WHERE email_id = ?').run(emailId);
+
+    // Call 3 — increments attempt counter to 3, router throws, fallback stored
+    await classifyEmail(userId, emailId);
+    db.prepare('DELETE FROM classifications WHERE email_id = ?').run(emailId);
+
+    // Call 4 — attempt counter is now 4 > MAX_ATTEMPTS(3), stores source='failed'
+    await classifyEmail(userId, emailId);
+  } finally {
+    llm.router.classify = origClassify;
+  }
+
+  const row = db.prepare('SELECT source FROM classifications WHERE email_id = ?').get(emailId);
+  assert.ok(row, 'classification row must exist after exhausting attempts');
+  assert.equal(row.source, 'failed', 'source must be "failed" after 3 failed attempts');
 });

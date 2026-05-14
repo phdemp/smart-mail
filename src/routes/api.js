@@ -1004,7 +1004,7 @@ router.post('/api/emails/:id/draft/regen', async (req, res) => {
 
   let draftReply, source, dbSource, warning = null;
   try {
-    const routed = await llm.router.classify(email, { mode: 'regen', tone, userId: req.user.id });
+    const routed = await llm.router.generateDraft(email, { mode: 'draft', tone, userId: req.user.id });
     if (routed && routed.draft_reply) {
       draftReply = routed.draft_reply;
       source = routed._provider;    // for the UI toast: 'nvidia' / 'groq' / 'gemini' / 'deepseek'
@@ -1287,6 +1287,7 @@ router.get('/api/llm/status', (req, res) => {
     has_gemini: hasGemini,
     has_deepseek: hasDeepseek,
     fallback_count: fallbackCount,
+    failed_count: db.prepare("SELECT COUNT(*) as n FROM classifications WHERE user_id = ? AND source = 'failed'").get(req.user.id).n,
     pending_classification_count: pendingCount,
     provider_health: health,
     any_provider_usable: anyUsable
