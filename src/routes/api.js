@@ -950,16 +950,30 @@ router.post('/api/emails/:id/reclassify', (req, res) => {
     .get(req.params.id, req.user.id);
   if (!email) return res.status(404).json({ error: 'not_found' });
 
+  // WR-07: Write the user-supplied category directly to the DB as source='user'
+  // so the result matches what the user chose. The previous implementation
+  // deleted the row and re-queued for LLM reclassification, meaning the actual
+  // resulting category was whatever the LLM decided — not the user's choice.
   db.prepare('DELETE FROM classifications WHERE email_id = ? AND user_id = ?')
     .run(req.params.id, req.user.id);
-  queueClassification(req.user.id, parseInt(req.params.id));
+  // Legal is always urgent; everything else defaults to normal urgency.
+  const userUrgency = category === 'legal' ? 'urgent' : 'normal';
+  const userUrgencyReason = category === 'legal' ? 'Legal matter requires immediate attention' : null;
+  db.prepare(`
+    INSERT OR IGNORE INTO classifications
+    (user_id, email_id, category, urgency, urgency_reason, summary, extracted_data, suggested_tone, source, low_confidence)
+    VALUES (?,?,?,?,?,?,?,?,?,?)
+  `).run(
+    req.user.id, req.params.id, category, userUrgency, userUrgencyReason,
+    null, '{}', 'professional', 'user', 0
+  );
 
-  // Return placeholder while reclassifying
+  // Return placeholder — the email detail will reload with the user's category.
   res.send(`
     <div style="padding:48px;text-align:center;color:var(--text-muted);">
-      <div style="font-size:24px;margin-bottom:12px;">⏳</div>
-      <div>Reclassifying as ${escHtml(categoryLabel(category))}...</div>
-      <div style="font-size:12px;margin-top:8px;">Reload in a few seconds</div>
+      <div style="font-size:24px;margin-bottom:12px;">✓</div>
+      <div>Recategorized as ${escHtml(categoryLabel(category))}</div>
+      <div style="font-size:12px;margin-top:8px;">Reload to see updated details</div>
     </div>
   `);
 });
