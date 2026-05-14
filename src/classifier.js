@@ -169,7 +169,8 @@ async function classifyEmail(userId, emailId) {
   const currentAttempts = (attempts.get(attemptKey) || 0) + 1;
   attempts.set(attemptKey, currentAttempts);
   if (currentAttempts > MAX_ATTEMPTS) {
-    storeClassification(userId, emailId, { ...fallbackClassification(), source: 'failed' });
+    // IN-02: pass the already-fetched email so storeClassification doesn't re-query.
+    storeClassification(userId, emailId, { ...fallbackClassification(), source: 'failed' }, email);
     attempts.delete(attemptKey);
     return;
   }
@@ -182,11 +183,12 @@ async function classifyEmail(userId, emailId) {
     const sub = email.subject || '';
     const summary = `${email.from_name || email.from_address} sent: ${sub.substring(0, 80)}${sub.length > 80 ? '...' : ''}.`;
     attempts.delete(attemptKey);
+    // IN-02: pass the already-fetched email to avoid a redundant DB round-trip.
     storeClassification(userId, emailId, {
       category: rulesCategory, urgency, urgency_reason, summary,
       extracted_data: extracted, suggested_tone: 'professional', draft_reply: null,
       source: 'rules'
-    });
+    }, email);
     return;
   }
 
@@ -195,6 +197,7 @@ async function classifyEmail(userId, emailId) {
     const routed = await llm.router.classify(email, { mode: 'full', userId });
     if (routed) {
       attempts.delete(attemptKey);
+      // IN-02: pass the already-fetched email to avoid a redundant DB round-trip.
       storeClassification(userId, emailId, {
         category:       routed.category,
         urgency:        routed.urgency,
@@ -205,16 +208,22 @@ async function classifyEmail(userId, emailId) {
         draft_reply:    routed.draft_reply    || null,
         source:         'llm',
         low_confidence: routed.low_confidence || false
-      });
+      }, email);
       return;
     }
   } catch (err) {
     console.error(`[classifier] router failed for user=${userId} email=${emailId}:`, err.message);
   }
-  storeClassification(userId, emailId, { ...fallbackClassification(), source: 'fallback' });
+  // IN-02: pass the already-fetched email to avoid a redundant DB round-trip.
+  storeClassification(userId, emailId, { ...fallbackClassification(), source: 'fallback' }, email);
 }
 
-function storeClassification(userId, emailId, data) {
+// IN-02: Accept an optional pre-fetched email object to avoid a redundant DB
+// query on every classification. callers in classifyEmail already hold the
+// email row; passing it here eliminates one SELECT per classification.
+// External callers (e.g. the reclassify API route) can omit the parameter
+// and the function will fall back to querying when needed.
+function storeClassification(userId, emailId, data, emailRow) {
   // WR-04: Narrowed error handling — only the optional draft insert is silently
   // swallowed. The classification INSERT and broadcast are in a separate try so
   // a schema error, constraint violation, or migration mismatch surfaces in logs
@@ -260,7 +269,8 @@ function storeClassification(userId, emailId, data) {
     // Create an empty draft row for EVERY email (regardless of category).
     // The draft editor will auto-regen on first open via the router, so users
     // get an LLM reply on every email — inbox, urgent, fyi, anything.
-    const email = db.prepare('SELECT * FROM emails WHERE id = ? AND user_id = ?').get(emailId, userId);
+    // IN-02: use the pre-fetched emailRow if available to avoid a redundant SELECT.
+    const email = emailRow || db.prepare('SELECT * FROM emails WHERE id = ? AND user_id = ?').get(emailId, userId);
     const existing = db.prepare('SELECT id FROM drafts WHERE email_id = ? AND user_id = ?').get(emailId, userId);
     if (!existing && email) {
       db.prepare('INSERT INTO drafts (user_id, email_id, body, tone, subject, to_address) VALUES (?,?,?,?,?,?)')
