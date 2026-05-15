@@ -581,6 +581,35 @@ router.get('/api/emails/:id', async (req, res) => {
         </div>
       ` : ''}
 
+      <!-- Correction affordance — always rendered for all categories; visible after 3-second read timer (CORRECT-03) -->
+      <div id="correction-affordance-${email.id}" class="correction-affordance" style="opacity:0;pointer-events:none;transition:opacity 0.3s;">
+        <div x-data="{open:false}" style="margin-top:12px;">
+          <button class="action-btn btn-ghost"
+                  @click="open=!open"
+                  style="margin-bottom:8px;">
+            🏷️ Recategorize
+          </button>
+          <template x-if="open">
+            <div style="background:var(--bg-raised);border:1px solid var(--border-bright);border-radius:8px;padding:16px;">
+              <div style="font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:12px;">Select new category:</div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;">
+                ${['meeting_request','financial','legal','travel','pitch_deck','fyi','rewards_awards','other'].map(c => `
+                  <button class="action-btn btn-ghost badge-${c}"
+                          style="text-align:left;padding:8px 12px;"
+                          hx-post="/api/emails/${email.id}/reclassify"
+                          hx-vals='{"category":"${c}"}'
+                          hx-target="#email-detail"
+                          hx-swap="innerHTML"
+                          onclick="showToast('info','Recategorizing...')">
+                    ${escHtml(categoryLabel(c))}
+                  </button>
+                `).join('')}
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+
       <!-- Draft Editor -->
       <div style="border-top:1px solid var(--border);padding-top:20px;margin-top:8px;">
         <div style="font-size:11px;font-family:'IBM Plex Mono',monospace;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:14px;">— AI Draft Response —</div>
@@ -894,34 +923,6 @@ function renderActionZone(cat, email, cls, extracted) {
           <button class="action-btn btn-ghost" onclick="document.querySelector('.draft-editor textarea')?.focus()">
             ↩️ Draft Reply
           </button>
-          <button class="action-btn btn-ghost"
-                  x-data="{open:false}"
-                  @click="open=!open">
-            🏷️ Recategorize
-          </button>
-        </div>
-        <!-- Recategorize modal trigger (Alpine-driven inline) — wrapped for 3-second read timer (CORRECT-03) -->
-        <div id="correction-affordance-${email.id}" class="correction-affordance" style="opacity:0;pointer-events:none;transition:opacity 0.3s;">
-          <div x-data="{open:false}" style="margin-top:12px;">
-            <template x-if="open">
-              <div style="background:var(--bg-raised);border:1px solid var(--border-bright);border-radius:8px;padding:16px;">
-                <div style="font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:12px;">Select new category:</div>
-                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;">
-                  ${['meeting_request','financial','legal','travel','pitch_deck','fyi','rewards_awards','other'].map(c => `
-                    <button class="action-btn btn-ghost badge-${c}"
-                            style="text-align:left;padding:8px 12px;"
-                            hx-post="/api/emails/${email.id}/reclassify"
-                            hx-vals='{"category":"${c}"}'
-                            hx-target="#email-detail"
-                            hx-swap="innerHTML"
-                            onclick="showToast('info','Recategorizing...')">
-                      ${escHtml(categoryLabel(c))}
-                    </button>
-                  `).join('')}
-                </div>
-              </div>
-            </template>
-          </div>
         </div>
       `;
     }
