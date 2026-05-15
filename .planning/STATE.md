@@ -5,14 +5,13 @@
 See: .planning/PROJECT.md (updated 2026-05-14)
 
 **Core value:** Every email a user receives should be understood by the system: correctly categorized, concisely summarized, and ready for action — without the user having to open it first.
-**Current focus:** Phase 2 — Thread Context
+**Current focus:** Phase 3 — User Correction Loop
 
 ## Current Position
 
-Phase: 2 of 5 (Thread Context)
-Plan: 5 plans created (Wave 0→1→2)
-Status: Ready to execute
-Last activity: 2026-05-14 — Phase 2 planned; 5 plans in 2 waves (+ Wave 0); all 7 THREAD requirements covered
+Phase: 3 of 5 (User Correction Loop)
+Status: Phase 2 complete; Phase 3 ready to discuss/plan
+Last activity: 2026-05-15 — Phase 2 executed; all 5 plans complete; 122/122 tests passing; all 7 THREAD requirements fulfilled
 
 Progress: [██████████] 90%
 

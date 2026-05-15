@@ -7,7 +7,7 @@ IntelliMail has a working two-tier AI classifier in production. This milestone r
 ## Phases
 
 - [ ] **Phase 1: Prompt Quality Baseline** - Eval corpus, split prompts, structured output, reliability infra — the gate for all subsequent work
-- [ ] **Phase 2: Thread Context** - Full thread history passed to classification and draft calls; structured logging enabled
+- [x] **Phase 2: Thread Context** - Full thread history passed to classification and draft calls; structured logging enabled *(Complete 2026-05-15)*
 - [ ] **Phase 3: User Correction Loop** - Inline correction affordance, sender-rule promotion, summary feedback — storage and consumer in one phase
 - [ ] **Phase 4: Provider Observability** - Health endpoint, structured logging UI, user-facing degraded indicator, soft-failure cascade
 - [ ] **Phase 5: AI Output UI** - Tier attribution, urgency tooltips, extracted data panels, draft visual treatment, progressive disclosure
@@ -49,15 +49,15 @@ Plans:
 Plans:
 
 **Wave 0**
-- [ ] 02-01-PLAN.md — Wave 0 test stubs: thread.test.js (new), base.test.js + router.test.js extensions
+- [x] 02-01-PLAN.md — Wave 0 test stubs: thread.test.js (new), base.test.js + router.test.js extensions
 
 **Wave 1** *(blocked on Wave 0 completion)*
-- [ ] 02-02-PLAN.md — DB foundation: llm_logs table + 30-day pruning, idx_emails_msgid_user index, imap.js storeEmail raw_headers fix
-- [ ] 02-03-PLAN.md — Thread utility module: src/llm/thread.js (fetchThreadContext, buildThreadContext, stripQuotedReplies)
-- [ ] 02-04-PLAN.md — Prompt injection: base.js opts.threadContext in buildPrompt() and buildDraftPrompt()
+- [x] 02-02-PLAN.md — DB foundation: llm_logs table + 30-day pruning, idx_emails_msgid_user index, imap.js storeEmail raw_headers fix
+- [x] 02-03-PLAN.md — Thread utility module: src/llm/thread.js (fetchThreadContext, buildThreadContext, stripQuotedReplies)
+- [x] 02-04-PLAN.md — Prompt injection: base.js opts.threadContext in buildPrompt() and buildDraftPrompt()
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 02-05-PLAN.md — Wire-up + logging: classifier.js thread fetch, router.js token_count + llm_logs INSERT
+- [x] 02-05-PLAN.md — Wire-up + logging: classifier.js thread fetch, router.js token_count + llm_logs INSERT
 
 Cross-cutting constraints:
 - All `fetchThreadContext` SQL queries must include `AND user_id = ?` — cross-user thread leakage prevention (V4, ASVS L1)
