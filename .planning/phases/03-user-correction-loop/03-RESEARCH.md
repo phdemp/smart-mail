@@ -689,7 +689,7 @@ The `/feedback` endpoint must follow this exact pattern before inserting into `a
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **How should `broadcast` be made available to `api.js`?**
    - What we know: `classifier.js` uses a `setBroadcast` injection; `server.js` calls it. The same pattern exists for `imap.js`. `api.js` is a router module that `server.js` imports.
