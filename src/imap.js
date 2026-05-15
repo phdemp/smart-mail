@@ -66,12 +66,24 @@ async function createClient(cfg) {
 
 async function storeEmail(userId, parsed, folder) {
   const msgId = parsed.messageId || `uid-${Date.now()}-${Math.random()}`;
+  // Persist raw_headers JSON for D-01 header-based thread linking in Phase 2
+  let rawHeadersJson;
+  try {
+    rawHeadersJson = JSON.stringify({
+      'in-reply-to': parsed.inReplyTo || '',
+      'references': Array.isArray(parsed.references)
+        ? parsed.references.join(' ')
+        : (parsed.references || '')
+    });
+  } catch (_) {
+    rawHeadersJson = '{}';
+  }
   try {
     const result = db.prepare(`
       INSERT OR IGNORE INTO emails
       (user_id, message_id, uid, folder, from_address, from_name, to_address, cc_address,
-       subject, body_text, body_html, received_at, is_read)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+       subject, body_text, body_html, received_at, is_read, raw_headers)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     `).run(
       userId,
       msgId, String(parsed.uid || ''), folder,
@@ -83,7 +95,8 @@ async function storeEmail(userId, parsed, folder) {
       (parsed.text || '').substring(0, 100000),
       (parsed.html || '').substring(0, 200000),
       (parsed.date || new Date()).toISOString(),
-      0
+      0,
+      rawHeadersJson
     );
     if (result.changes === 0) {
       // Already existed — return existing id (scoped to this user)

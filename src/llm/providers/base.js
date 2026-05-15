@@ -60,6 +60,14 @@ function buildPrompt(email, opts = {}) {
   const lines = [];
   lines.push(SYSTEM_PROMPT);
   lines.push('');
+  if (opts.threadContext) {
+    lines.push('## Prior thread context');
+    lines.push('');
+    lines.push(opts.threadContext);
+    lines.push('');
+    lines.push('## Current email');
+    lines.push('');
+  }
   lines.push(`From: ${email.from_name || ''} <${email.from_address || ''}>`);
   lines.push(`Subject: ${email.subject || ''}`);
   const body = (email.body_text || email.preview || '').slice(0, BODY_SNIPPET_LEN);
@@ -72,6 +80,14 @@ function buildDraftPrompt(email, opts = {}) {
   lines.push('You are drafting a reply email on behalf of the recipient.');
   lines.push('Write a direct, complete reply. 2-4 sentences. No subject line. No placeholder text.');
   lines.push('');
+  if (opts.threadContext) {
+    lines.push('## Prior thread context');
+    lines.push('');
+    lines.push(opts.threadContext);
+    lines.push('');
+    lines.push('## Current email');
+    lines.push('');
+  }
   lines.push(`From: ${email.from_name || ''} <${email.from_address || ''}>`);
   lines.push(`Subject: ${email.subject || ''}`);
   const body = (email.body_text || email.preview || '').slice(0, BODY_SNIPPET_LEN);

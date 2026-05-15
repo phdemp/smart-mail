@@ -177,6 +177,25 @@ CREATE INDEX IF NOT EXISTS idx_provider_usage_day ON provider_usage(day);
 // Prune provider_usage rows older than 7 days on boot
 try { db.prepare("DELETE FROM provider_usage WHERE day < date('now', '-7 days')").run(); } catch(e) {}
 
+// Phase 2: llm_logs table (D-10) — created via inline guard so re-runs are safe
+try {
+  db.exec(`
+    CREATE TABLE llm_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ts TEXT NOT NULL,
+      provider TEXT,
+      user_id INTEGER,
+      email_id INTEGER,
+      token_count INTEGER,
+      outcome TEXT,
+      latency_ms INTEGER
+    )
+  `);
+} catch(e) {}
+
+// Phase 2: 30-day retention pruning on boot (D-11)
+try { db.prepare("DELETE FROM llm_logs WHERE ts < datetime('now', '-30 days')").run(); } catch(e) {}
+
 // ─── Multi-user auth ─────────────────────────────────────────────────────
 db.exec(`
 CREATE TABLE IF NOT EXISTS users (
@@ -233,6 +252,7 @@ CREATE INDEX IF NOT EXISTS idx_drafts_user          ON drafts(user_id);
 CREATE INDEX IF NOT EXISTS idx_sync_log_user        ON sync_log(user_id);
 -- Powers the classification-scope check (latest 100 within last 10 days per user).
 CREATE INDEX IF NOT EXISTS idx_emails_user_received ON emails(user_id, received_at DESC);
+CREATE INDEX IF NOT EXISTS idx_emails_msgid_user    ON emails(user_id, message_id);
 `);
 
 // provider_usage needs its PK rebuilt to include user_id. SQLite can't ALTER PK,
