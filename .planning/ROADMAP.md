@@ -111,8 +111,25 @@ Cross-cutting constraints:
   3. A single amber "AI features degraded" pill appears on the dashboard when any provider is in a non-ok state — end users see this language, not circuit-breaker terminology
   4. When a provider returns HTTP 200 with a null or invalid category, or an empty summary, the router triggers cascade fallback to the next provider rather than accepting the malformed result
   5. On server startup, the classification queue is held for 30-60 seconds before resuming, preventing a burst of retry errors if a provider was mid-outage at restart time
-**Plans**: TBD
-**UI hint**: yes
+**Plans**: 3 plans
+
+Plans:
+
+**Wave 0**
+- [ ] 04-01-PLAN.md — Wave 0 test stubs: tests/api/health.test.js (new), tests/server.test.js (new)
+
+**Wave 1** *(blocked on Wave 0 completion)*
+- [ ] 04-02-PLAN.md — Backend: /api/llm/health + /api/llm/health/pill endpoints (api.js), soft-failure gate + CATEGORIES import (router.js), startup warmup delay (server.js), 4 new router test cases
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 04-03-PLAN.md — Frontend: Settings health panel (settings.html), dashboard pill HTMX wrapper (dashboard.html)
+
+Cross-cutting constraints:
+- New /api/llm/health routes must NOT be added to PUBLIC_API_PATHS — global requireAuth in server.js:74-81 covers them (V2, ASVS L1)
+- getProviderHealth(req.user.id) is user-scoped — never call with a hardcoded or null userId in production code (V4, ASVS L1)
+- last_error_msg rendered via Alpine x-text (not x-html) in settings.html — XSS prevention (V5, ASVS L1)
+- Dashboard pill must say "AI features degraded" only — no provider names, no circuit-breaker terms in end-user facing HTML
+- `node --test "tests/**/*.test.js"` must pass green (136+ tests) before each wave merge and before `/gsd-verify-work`
 
 **Risks:**
 - The user-facing / operator-facing language boundary is a design decision to make before implementation; "circuit breaker open" must never appear to end users; agree on the language split before writing the UI
@@ -142,5 +159,5 @@ Cross-cutting constraints:
 | 1. Prompt Quality Baseline | 0/TBD | Not started | - |
 | 2. Thread Context | 5/5 | Complete | 2026-05-15 |
 | 3. User Correction Loop | 0/4 | Planned | - |
-| 4. Provider Observability | 0/TBD | Not started | - |
+| 4. Provider Observability | 0/3 | Planned | - |
 | 5. AI Output UI | 0/TBD | Not started | - |
