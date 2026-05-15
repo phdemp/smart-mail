@@ -1,5 +1,15 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const path = require('node:path');
+const fs = require('node:fs');
+
+// DB isolation for llm_logs tests (Phase 2) — set BEFORE requiring src/db or src/llm/router
+const dbPath = path.join(__dirname, '..', '..', 'intellimail-router-test.db');
+process.env.DB_PATH = dbPath;
+
+test.before(() => { try { fs.rmSync(dbPath, { force: true }); } catch (_) {} });
+test.after(() => { try { fs.rmSync(dbPath, { force: true }); } catch (_) {} });
+
 const { createRouter } = require('../../src/llm/router');
 
 function fake(name, impl) {
@@ -180,4 +190,62 @@ test('router.generateDraft returns draft_reply from first provider', async () =>
   const out = await r.generateDraft({ from_address: 'x@y.com', subject: 'z', body_text: '' }, { mode: 'draft' });
   assert.equal(out.draft_reply, 'test draft');
   assert.equal(out._provider, 'a');
+});
+
+// Phase 2 THREAD-06: fails until Plan 05 (router.js llm_logs INSERT) lands.
+
+test('classify inserts row into llm_logs on success', async () => {
+  const { db } = require('../../src/db');
+
+  db.prepare('INSERT OR IGNORE INTO users (email) VALUES (?)').run('logtest@test.com');
+  const userId = db.prepare("SELECT id FROM users WHERE email = 'logtest@test.com'").get().id;
+  db.prepare(`INSERT OR IGNORE INTO emails (user_id, message_id, folder, subject, body_text, received_at)
+    VALUES (?, 'mid-logtest-success', 'INBOX', 'log test', 'body', datetime('now'))`).run(userId);
+  const email = db.prepare("SELECT * FROM emails WHERE message_id = 'mid-logtest-success'").get();
+
+  const providerA = {
+    name: 'mock-provider',
+    defaultModel: 'x',
+    limits: { rpm: 1000, rpd: 1000 },
+    call: async () => ({ category: 'fyi', urgency: 'normal', summary: 's', draft_reply: 'r' })
+  };
+  const r = createRouter({
+    providers: [providerA],
+    getConfig: () => ({ order: ['mock-provider'], enabled: ['mock-provider'], keys: {}, models: {} })
+  });
+
+  await r.classify(email, { mode: 'full', userId });
+
+  const row = db.prepare("SELECT * FROM llm_logs WHERE outcome = 'success' AND provider = 'mock-provider'").get();
+  assert.ok(row, 'llm_logs should contain a success row after classify resolves');
+  assert.equal(row.outcome, 'success');
+  assert.ok(row.token_count > 0, 'token_count should be positive');
+});
+
+test('classify inserts row into llm_logs on error', async () => {
+  const { db } = require('../../src/db');
+
+  db.prepare('INSERT OR IGNORE INTO users (email) VALUES (?)').run('logtest-err@test.com');
+  const userId = db.prepare("SELECT id FROM users WHERE email = 'logtest-err@test.com'").get().id;
+  db.prepare(`INSERT OR IGNORE INTO emails (user_id, message_id, folder, subject, body_text, received_at)
+    VALUES (?, 'mid-logtest-error', 'INBOX', 'log test error', 'body', datetime('now'))`).run(userId);
+  const email = db.prepare("SELECT * FROM emails WHERE message_id = 'mid-logtest-error'").get();
+
+  const providerFailing = {
+    name: 'failing-provider',
+    defaultModel: 'x',
+    limits: { rpm: 1000, rpd: 1000 },
+    call: async () => { throw new Error('provider failure'); }
+  };
+  const r = createRouter({
+    providers: [providerFailing],
+    getConfig: () => ({ order: ['failing-provider'], enabled: ['failing-provider'], keys: {}, models: {} })
+  });
+
+  await r.classify(email, { mode: 'full', userId });
+
+  const row = db.prepare("SELECT * FROM llm_logs WHERE provider = 'failing-provider'").get();
+  assert.ok(row, 'llm_logs should contain an error row after classify rejects');
+  assert.notEqual(row.outcome, 'success', 'outcome should not be success on provider error');
+  assert.ok(row.latency_ms >= 0, 'latency_ms should be non-negative');
 });

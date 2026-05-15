@@ -155,3 +155,54 @@ test('PROMPT-03: SYSTEM_PROMPT includes disambiguation examples for fyi/other, r
   assert.ok(SYSTEM_PROMPT.includes('not rewards_awards'), 'SYSTEM_PROMPT must include "not rewards_awards"');
   assert.ok(SYSTEM_PROMPT.includes('not meeting_request'), 'SYSTEM_PROMPT must include "not meeting_request"');
 });
+
+// Phase 2 THREAD-04: fails until Plan 04 (base.js) lands.
+
+test('buildPrompt injects ## Prior thread context when opts.threadContext present', () => {
+  const email = {
+    from_name: 'Alice',
+    from_address: 'alice@example.com',
+    subject: 'Test',
+    body_text: 'body'
+  };
+  const out = buildPrompt(email, { threadContext: 'THREAD CTX' });
+  assert.match(out, /## Prior thread context/, 'should contain Prior thread context heading');
+  assert.match(out, /## Current email/, 'should contain Current email heading');
+  assert.ok(out.includes('THREAD CTX'), 'should contain the thread context value');
+});
+
+test('buildPrompt without opts.threadContext is unchanged', () => {
+  const email = {
+    from_name: 'Alice',
+    from_address: 'alice@example.com',
+    subject: 'Test',
+    body_text: 'body'
+  };
+  const out = buildPrompt(email, {});
+  assert.ok(!out.includes('## Prior thread context'), 'should not include Prior thread context when absent');
+});
+
+// Phase 2 THREAD-07: fails until Plan 04 (base.js) lands.
+
+test('buildDraftPrompt injects ## Prior thread context when opts.threadContext present', () => {
+  const email = {
+    from_name: 'Bob',
+    from_address: 'bob@example.com',
+    subject: 'Reply Test',
+    body_text: 'please reply'
+  };
+  const out = buildDraftPrompt(email, { threadContext: 'ctx', tone: 'friendly' });
+  assert.match(out, /## Prior thread context/, 'buildDraftPrompt should contain Prior thread context heading');
+  assert.match(out, /## Current email/, 'buildDraftPrompt should contain Current email heading');
+});
+
+test('buildDraftPrompt without opts.threadContext is unchanged', () => {
+  const email = {
+    from_name: 'Bob',
+    from_address: 'bob@example.com',
+    subject: 'Reply Test',
+    body_text: 'please reply'
+  };
+  const out = buildDraftPrompt(email, {});
+  assert.ok(!out.includes('## Prior thread context'), 'should not include Prior thread context when absent');
+});
