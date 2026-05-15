@@ -173,6 +173,13 @@
       </button>
     </div>
 
+    <!-- AI degraded pill — polled every 30s; server returns "" when all providers ok (D-02, D-04) -->
+    <!-- hx-swap="innerHTML" keeps the wrapper div in DOM so polling continues (Pitfall 3) -->
+    <div hx-get="/api/llm/health/pill"
+         hx-trigger="load, every 30s"
+         hx-swap="innerHTML">
+    </div>
+
     <!-- Email List -->
     <div id="email-list"
          hx-get="/api/emails?folder=INBOX&category=all"
