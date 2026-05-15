@@ -77,7 +77,25 @@ Cross-cutting constraints:
   3. After 2 or more corrections from the same sender domain to the same category, a Tier 1 sender-rule override is stored and applied on future emails from that domain before any regex or LLM processing
   4. Correction history (original category, corrected category, timestamp) is visible in the email detail panel
   5. Thumbs up / thumbs down on summaries is stored to the ai_feedback table — the signal is captured even though no immediate re-generation is triggered
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+
+**Wave 0**
+- [ ] 03-01-PLAN.md — Test stubs: tests/correction.test.js — schema assertions, sender rule promotion, ai_feedback UPSERT
+
+**Wave 1** *(blocked on Wave 0 completion)*
+- [ ] 03-02-PLAN.md — DB schema: classifications audit columns, sender_rules table, ai_feedback table
+- [ ] 03-03-PLAN.md — Classifier Tier 0: sender-rule lookup before rulesClassify() in classifyEmail()
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 03-04-PLAN.md — Endpoint + UI: /reclassify extension, /feedback endpoint, setBroadcast injection, email detail fragment, app.js SSE listener
+
+Cross-cutting constraints:
+- All DB queries in /reclassify and /feedback MUST include `AND user_id = req.user.id` — cross-user classification/feedback access prevention (V4, ASVS L1)
+- category validated against CATEGORIES enum; vote validated against ['up','down'] before any DB write (V5, ASVS L1)
+- broadcast cannot be imported from api.js via require('../server') — use setBroadcast injection pattern
+- `node --test "tests/**/*.test.js"` must pass green (122+ tests) before each wave merge and before `/gsd-verify-work`
 
 **Risks:**
 - Storing corrections without a downstream consumer is worse than no feedback system — it creates false confidence that the system is learning when it isn't; the sender-rule consumer (CORRECT-05) is mandatory in this same phase, not a follow-up
@@ -122,7 +140,7 @@ Cross-cutting constraints:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Prompt Quality Baseline | 0/TBD | Not started | - |
-| 2. Thread Context | 0/5 | Not started | - |
-| 3. User Correction Loop | 0/TBD | Not started | - |
+| 2. Thread Context | 5/5 | Complete | 2026-05-15 |
+| 3. User Correction Loop | 0/4 | Planned | - |
 | 4. Provider Observability | 0/TBD | Not started | - |
 | 5. AI Output UI | 0/TBD | Not started | - |
