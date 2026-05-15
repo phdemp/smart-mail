@@ -6,6 +6,10 @@ const { sendEmail, testSmtp } = require('../smtp');
 const { testImap, getSyncMode, startSyncForUser, stopSyncForUser, flagAsDeleted, expungeDeleted } = require('../imap');
 const { normalizePassword } = require('../util/credentials');
 
+// Phase 3: setBroadcast injection — mirrors classifier.js pattern (Pitfall 1: no circular require)
+let broadcast = () => {};
+function setBroadcast(fn) { broadcast = fn; }
+
 // ─── Public endpoints (no auth required) ────────────────────────────────────
 router.get('/api/users/any', (req, res) => {
   const n = db.prepare('SELECT COUNT(*) as n FROM users').get().n;
@@ -945,15 +949,15 @@ router.post('/api/emails/:id/reclassify', (req, res) => {
   const validCategories = ['meeting_request','financial','legal','travel','pitch_deck','fyi','rewards_awards','other'];
   if (!validCategories.includes(category)) return res.status(400).json({ error: 'Invalid category' });
 
-  // Ensure the email belongs to this user before we touch classifications.
-  const email = db.prepare('SELECT id FROM emails WHERE id = ? AND user_id = ?')
+  // Fetch full email row to get from_address for domain extraction (D-08)
+  const email = db.prepare('SELECT id, from_address FROM emails WHERE id = ? AND user_id = ?')
     .get(req.params.id, req.user.id);
   if (!email) return res.status(404).json({ error: 'not_found' });
 
+  const domain = (email.from_address || '').split('@')[1] || '';
+
   // WR-07: Write the user-supplied category directly to the DB as source='user'
-  // so the result matches what the user chose. The previous implementation
-  // deleted the row and re-queued for LLM reclassification, meaning the actual
-  // resulting category was whatever the LLM decided — not the user's choice.
+  // so the result matches what the user chose. Phase 3: also write audit columns (CORRECT-01).
   db.prepare('DELETE FROM classifications WHERE email_id = ? AND user_id = ?')
     .run(req.params.id, req.user.id);
   // Legal is always urgent; everything else defaults to normal urgency.
@@ -961,21 +965,72 @@ router.post('/api/emails/:id/reclassify', (req, res) => {
   const userUrgencyReason = category === 'legal' ? 'Legal matter requires immediate attention' : null;
   db.prepare(`
     INSERT OR IGNORE INTO classifications
-    (user_id, email_id, category, urgency, urgency_reason, summary, extracted_data, suggested_tone, source, low_confidence)
-    VALUES (?,?,?,?,?,?,?,?,?,?)
+    (user_id, email_id, category, urgency, urgency_reason, summary, extracted_data,
+     suggested_tone, source, low_confidence, user_corrected_category, corrected_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
   `).run(
     req.user.id, req.params.id, category, userUrgency, userUrgencyReason,
-    null, '{}', 'professional', 'user', 0
+    null, '{}', 'professional', 'user', 0, category
   );
 
-  // Return placeholder — the email detail will reload with the user's category.
-  res.send(`
-    <div style="padding:48px;text-align:center;color:var(--text-muted);">
-      <div style="font-size:24px;margin-bottom:12px;">✓</div>
-      <div>Recategorized as ${escHtml(categoryLabel(category))}</div>
-      <div style="font-size:12px;margin-top:8px;">Reload to see updated details</div>
-    </div>
-  `);
+  // Sender rule promotion (D-05): count corrections for this (user, domain, category)
+  if (domain) {
+    const { cnt } = db.prepare(`
+      SELECT COUNT(*) as cnt
+      FROM classifications c
+      JOIN emails e ON e.id = c.email_id AND e.user_id = c.user_id
+      WHERE c.user_id = ? AND c.source = 'user'
+        AND substr(e.from_address, instr(e.from_address, '@') + 1) = ?
+        AND c.category = ?
+    `).get(req.user.id, domain, category);
+    if (cnt >= 2) {
+      db.prepare(`
+        INSERT OR REPLACE INTO sender_rules (user_id, domain, category)
+        VALUES (?, ?, ?)
+      `).run(req.user.id, domain, category);
+    }
+  }
+
+  // SSE broadcast (D-09)
+  broadcast('classification_updated', {
+    email_id: req.params.id,
+    category,
+    source: 'user',
+    domain
+  });
+
+  // HTMX response — SSE listener will re-render the detail fragment
+  res.send(`<div style="padding:48px;text-align:center;color:var(--text-muted);">
+    <div style="font-size:24px;margin-bottom:12px;">&#x2713;</div>
+    <div>Recategorized as ${escHtml(categoryLabel(category))}</div>
+  </div>`);
+});
+
+router.post('/api/emails/:id/feedback', (req, res) => {
+  const { vote } = req.body;
+  if (!['up', 'down'].includes(vote)) return res.status(400).json({ error: 'Invalid vote' });
+
+  // Auth-scope: confirm email ownership before writing feedback (T-03-13)
+  const email = db.prepare('SELECT id FROM emails WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.user.id);
+  if (!email) return res.status(404).json({ error: 'not_found' });
+
+  // Confirm classification belongs to this email + user (Pitfall 6: summary_id is cls.id, not email.id)
+  const cls = db.prepare(
+    'SELECT id FROM classifications WHERE email_id = ? AND user_id = ?'
+  ).get(req.params.id, req.user.id);
+  if (!cls) return res.status(404).json({ error: 'not_found' });
+
+  // UPSERT — allows vote change (up -> down), no duplicate rows (D-13)
+  db.prepare(`
+    INSERT OR REPLACE INTO ai_feedback (user_id, summary_id, vote)
+    VALUES (?, ?, ?)
+  `).run(req.user.id, cls.id, vote);
+
+  // HTMX outerHTML swap — replace thumbs widget with "Thanks!" (D-13)
+  res.send(`<div id="thumbs-${cls.id}" class="ai-thumbs">
+    <span style="font-size:12px;color:var(--text-muted);">Thanks!</span>
+  </div>`);
 });
 
 // ─── Draft Routes ─────────────────────────────────────────────────────────────
@@ -1435,3 +1490,4 @@ router.get('/api/sidebar', (req, res) => {
 });
 
 module.exports = router;
+module.exports.setBroadcast = setBroadcast;

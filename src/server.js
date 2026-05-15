@@ -62,6 +62,8 @@ setBroadcast((event, data) => {
   }
 });
 setClassifierBroadcast(broadcast);
+const { setBroadcast: setApiBroadcast } = require('./routes/api');
+setApiBroadcast(broadcast);
 
 // Auth gate: every /api/* route requires a valid JWT except the public endpoints below.
 const { requireAuth } = require('./middleware/auth');
