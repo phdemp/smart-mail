@@ -115,6 +115,15 @@ None - no external service configuration required.
 - Wave 1 plans (03-02, 03-03) can now extend /reclassify and classifier.js against a verified schema
 - No blockers
 
+## Self-Check: PASSED
+
+- FOUND: tests/correction.test.js
+- FOUND: src/db.js (with Phase 3 migrations)
+- FOUND: commit 63e1878 (task commit)
+- FOUND: commit 9b62348 (SUMMARY commit)
+- FOUND: .planning/phases/03-user-correction-loop/03-01-SUMMARY.md
+- All 10 new tests pass; 103 total tests pass, 0 failures
+
 ---
 *Phase: 03-user-correction-loop*
 *Completed: 2026-05-15*
