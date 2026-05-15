@@ -1425,6 +1425,33 @@ router.get('/api/llm/status', (req, res) => {
   });
 });
 
+// ─── Provider health endpoint (OBSERVE-01, OBSERVE-04) ──────────────────────
+router.get('/api/llm/health', (req, res) => {
+  const llm = require('../llm');
+  const health = llm.router.getProviderHealth(req.user.id) || {};
+  const failedCount = db.prepare(
+    "SELECT COUNT(*) as n FROM classifications WHERE user_id = ? AND source = 'failed'"
+  ).get(req.user.id).n;
+  res.json({ providers: health, failed_count: failedCount });
+});
+
+router.get('/api/llm/health/pill', (req, res) => {
+  const llm = require('../llm');
+  const health = llm.router.getProviderHealth(req.user.id) || {};
+  // Only show pill for explicitly non-ok, non-unknown statuses (D-01; Pitfall 5)
+  const anyDegraded = Object.values(health).some(
+    h => h.status && h.status !== 'ok' && h.status !== 'unknown'
+  );
+  if (!anyDegraded) return res.send('');
+  res.send(
+    '<div style="padding:8px 16px;background:rgba(245,158,11,0.10);border-bottom:1px solid rgba(245,158,11,0.35);font-size:13px;display:flex;align-items:center;gap:8px;">' +
+    '<span style="color:var(--accent-amber);">&#9888;</span>' +
+    '<span style="color:var(--text-primary);">AI features degraded</span>' +
+    '<a href="/settings#providers" style="color:var(--accent-amber);font-size:11px;margin-left:auto;text-decoration:none;">View status &rarr;</a>' +
+    '</div>'
+  );
+});
+
 router.post('/api/classifications/reclassify-fallback', (req, res) => {
   const cfg = getConfig(req.user.id) || {};
   const { defaultKeysStatusFor } = require('../llm/config');

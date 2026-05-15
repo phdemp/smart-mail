@@ -80,10 +80,51 @@ test.after(() => { try { fs.rmSync(process.env.DB_PATH, { force: true }); } catc
 
 const { u1 } = seed();
 
-test.todo('GET /api/llm/health returns 401 without token');
+test('GET /api/llm/health returns 401 without token', async () => {
+  const r = await request(app(), 'GET', '/api/llm/health', null);
+  assert.equal(r.status, 401, 'should return 401 when no token provided');
+});
 
-test.todo('GET /api/llm/health returns { providers, failed_count } shape with valid token');
+test('GET /api/llm/health returns { providers, failed_count } shape with valid token', async () => {
+  const tok = signToken(u1, 'health@test.com');
+  mockGetProviderHealth = () => ({
+    nvidia: { status: 'ok', last_error: null, last_error_at: null, last_error_msg: null, last_success_at: null }
+  });
+  const r = await request(app(), 'GET', '/api/llm/health', tok);
+  assert.equal(r.status, 200, 'should return 200 with valid token');
+  assert.ok(r.body && typeof r.body === 'object', 'response should be JSON object');
+  assert.ok('providers' in r.body, 'response must have providers key');
+  assert.ok('failed_count' in r.body, 'response must have failed_count key');
+  assert.equal(typeof r.body.failed_count, 'number', 'failed_count should be a number');
+});
 
-test.todo('GET /api/llm/health/pill returns empty string when all providers ok or unknown');
+test('GET /api/llm/health/pill returns empty string when all providers ok or unknown', async () => {
+  const tok = signToken(u1, 'health@test.com');
+  mockGetProviderHealth = () => ({
+    nvidia:   { status: 'ok', last_error: null, last_error_at: null, last_error_msg: null, last_success_at: null },
+    groq:     { status: 'unknown', last_error: null, last_error_at: null, last_error_msg: null, last_success_at: null },
+    gemini:   { status: 'ok', last_error: null, last_error_at: null, last_error_msg: null, last_success_at: null },
+    deepseek: { status: 'unknown', last_error: null, last_error_at: null, last_error_msg: null, last_success_at: null }
+  });
+  const r = await request(app(), 'GET', '/api/llm/health/pill', tok);
+  assert.equal(r.status, 200, 'should return 200');
+  assert.equal(r.body, '', 'pill body should be empty string when all providers ok or unknown');
+});
 
-test.todo('GET /api/llm/health/pill returns amber pill HTML when any provider non-ok — contains "AI features degraded", does not contain provider names or circuit breaker language');
+test('GET /api/llm/health/pill returns amber pill HTML when any provider non-ok — contains "AI features degraded", does not contain provider names or circuit breaker language', async () => {
+  const tok = signToken(u1, 'health@test.com');
+  mockGetProviderHealth = () => ({
+    nvidia:   { status: 'ok', last_error: null, last_error_at: null, last_error_msg: null, last_success_at: null },
+    groq:     { status: 'rate_limited', last_error: 'http_429', last_error_at: null, last_error_msg: null, last_success_at: null },
+    gemini:   { status: 'ok', last_error: null, last_error_at: null, last_error_msg: null, last_success_at: null },
+    deepseek: { status: 'ok', last_error: null, last_error_at: null, last_error_msg: null, last_success_at: null }
+  });
+  const r = await request(app(), 'GET', '/api/llm/health/pill', tok);
+  assert.equal(r.status, 200, 'should return 200');
+  assert.ok(typeof r.body === 'string' && r.body.length > 0, 'pill body should be non-empty HTML when a provider is degraded');
+  assert.ok(r.body.includes('AI features degraded'), 'pill must contain "AI features degraded" text');
+  assert.ok(!r.body.includes('circuit breaker'), 'pill must not contain "circuit breaker"');
+  assert.ok(!r.body.includes('rate limited'), 'pill must not contain "rate limited"');
+  assert.ok(!r.body.toLowerCase().includes('groq'), 'pill must not contain provider names');
+  assert.ok(!r.body.toLowerCase().includes('nvidia'), 'pill must not contain provider names');
+});

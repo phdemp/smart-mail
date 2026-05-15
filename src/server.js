@@ -92,9 +92,14 @@ app.use('/', apiRouter);
 async function init() {
   const users = db.prepare('SELECT id FROM users').all();
   for (const u of users) {
-    classifyAllUnclassifiedForUser(u.id);
-    startSyncForUser(u.id);
+    startSyncForUser(u.id);  // IMAP sync starts immediately
   }
+  // Delay startup classification flush 30s to absorb post-restart provider instability (D-09, OBSERVE-05)
+  setTimeout(() => {
+    for (const u of users) {
+      classifyAllUnclassifiedForUser(u.id);
+    }
+  }, 30000);
 }
 
 app.listen(PORT, () => {
