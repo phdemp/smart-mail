@@ -113,6 +113,17 @@ None — no new network endpoints, auth paths, or trust boundaries introduced. T
 - This worktree commit (`44bdf0b`) will be merged back to `work/merge-into-master` where the full Phase 3 code lives
 - The merge will produce the definitive fixed `api.js` combining Phase 3 features + gap closure
 
+## Self-Check: PASSED
+
+- FOUND: `03-05-SUMMARY.md` at `.planning/phases/03-user-correction-loop/03-05-SUMMARY.md`
+- FOUND: `src/routes/api.js` in worktree
+- FOUND: commit `44bdf0b` (task 1 — feat)
+- FOUND: commit `b7605e0` (SUMMARY docs commit)
+- `grep -c "correction-affordance" src/routes/api.js` returns `2` (expected 2)
+- Both occurrences in outer template (lines 602 and 632), none in `default:` case
+- No Recategorize button or picker in `default:` case
+- 7/7 tests pass
+
 ---
 *Phase: 03-user-correction-loop*
 *Completed: 2026-05-15*
