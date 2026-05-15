@@ -1,5 +1,6 @@
-const { parseProviderResponse, DEFAULTS } = require('./providers/base');
+const { parseProviderResponse, DEFAULTS, SYSTEM_PROMPT } = require('./providers/base');
 const { TokenBucket } = require('./ratelimiter');
+const { db } = require('../db');
 
 function createRouter({ providers, getConfig, logger, usage }) {
   const byName = new Map(providers.map(p => [p.name, p]));
@@ -86,6 +87,10 @@ function createRouter({ providers, getConfig, logger, usage }) {
       }
 
       const start = Date.now();
+      const promptApprox = (SYSTEM_PROMPT || '').length
+        + (email.body_text || email.preview || '').length
+        + ((opts.threadContext || '').length);
+      const tokenCount = Math.ceil(promptApprox / 4);
       try {
         const rawResult = await provider.call(email, opts, providerCfg);
         // Capture provider-reported limits if the provider attached them.
@@ -106,11 +111,21 @@ function createRouter({ providers, getConfig, logger, usage }) {
         br.lastError = null;
         br.lastErrorAt = null;
         br.lastErrorMsg = null;
-        log({ provider: name, mode, outcome: 'success', latency_ms: Date.now() - start, email_id: email.id, user_id: userId });
+        log({ provider: name, mode, outcome: 'success', latency_ms: Date.now() - start, email_id: email.id, user_id: userId, token_count: tokenCount });
+        try {
+          db.prepare(
+            "INSERT INTO llm_logs (ts, provider, user_id, email_id, token_count, outcome, latency_ms) VALUES (datetime('now'), ?, ?, ?, ?, ?, ?)"
+          ).run(name, userId != null ? userId : null, email.id, tokenCount, 'success', Date.now() - start);
+        } catch (_) {}
         return mapResult(parsed, name);
       } catch (err) {
         const outcome = classifyError(err);
-        log({ provider: name, mode, outcome, latency_ms: Date.now() - start, email_id: email.id, user_id: userId, err: err.message });
+        log({ provider: name, mode, outcome, latency_ms: Date.now() - start, email_id: email.id, user_id: userId, token_count: tokenCount, err: err.message });
+        try {
+          db.prepare(
+            "INSERT INTO llm_logs (ts, provider, user_id, email_id, token_count, outcome, latency_ms) VALUES (datetime('now'), ?, ?, ?, ?, ?, ?)"
+          ).run(name, userId != null ? userId : null, email.id, tokenCount, outcome, Date.now() - start);
+        } catch (_) {}
         const br = getBreaker(userId, name);
         br.lastError = outcome;
         br.lastErrorAt = Date.now();

@@ -1,6 +1,7 @@
 const { db, getConfig } = require('./db');
 const llm = require('./llm');
 const { CATEGORIES, URGENCIES } = require('./llm/providers/base');
+const { fetchThreadContext, buildThreadContext } = require('./llm/thread');
 
 let broadcast = () => {};
 function setBroadcast(fn) { broadcast = fn; }
@@ -194,7 +195,11 @@ async function classifyEmail(userId, emailId) {
 
   // Tier 2: provider cascade (nvidia → groq → gemini → deepseek)
   try {
-    const routed = await llm.router.classify(email, { mode: 'full', userId });
+    const priorMessages = (() => {
+      try { return fetchThreadContext(userId, email); } catch (_) { return []; }
+    })();
+    const threadContext = buildThreadContext(priorMessages) || undefined;
+    const routed = await llm.router.classify(email, { mode: 'full', userId, threadContext });
     if (routed) {
       attempts.delete(attemptKey);
       // IN-02: pass the already-fetched email to avoid a redundant DB round-trip.
@@ -314,7 +319,11 @@ async function generateDraft(userId, emailId) {
   const email = db.prepare('SELECT * FROM emails WHERE id = ? AND user_id = ?').get(emailId, userId);
   if (!email) return null;
   try {
-    const routed = await llm.router.generateDraft(email, { mode: 'draft', userId });
+    const priorMessages = (() => {
+      try { return fetchThreadContext(userId, email); } catch (_) { return []; }
+    })();
+    const threadContext = buildThreadContext(priorMessages) || undefined;
+    const routed = await llm.router.generateDraft(email, { mode: 'draft', userId, threadContext });
     return routed?.draft_reply || 'Thank you for your email. I will review and respond shortly.';
   } catch (err) {
     // WR-03: Log failures so they are visible during debugging. Silent swallow
