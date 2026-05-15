@@ -40,7 +40,7 @@ function setSyncMode(userId, mode) {
 }
 
 async function createClient(cfg) {
-  return new ImapFlow({
+  const client = new ImapFlow({
     host: cfg.imap_host,
     port: cfg.imap_port,
     secure: cfg.imap_tls === 1,
@@ -57,6 +57,11 @@ async function createClient(cfg) {
                      crypto.constants.SSL_OP_LEGACY_SERVER_CONNECT
     }
   });
+  // imapflow emits 'error' on socket-level failures (ECONNRESET etc.); without a listener
+  // Node.js treats unhandled EventEmitter errors as uncaught exceptions and crashes the process.
+  // The existing catch blocks on idle()/connect() still fire via promise rejection.
+  client.on('error', () => {});
+  return client;
 }
 
 async function storeEmail(userId, parsed, folder) {
