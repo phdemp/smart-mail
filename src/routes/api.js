@@ -530,6 +530,12 @@ router.get('/api/emails/:id', async (req, res) => {
             ${email.cc_address ? `<span style="margin-left:12px;">CC: ${escHtml(email.cc_address)}</span>` : ''}
             <span style="margin-left:12px;font-family:'IBM Plex Mono',monospace;">${new Date(email.received_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</span>
           </div>
+          ${cls?.user_corrected_category ? `
+            <div style="font-size:12px;color:var(--text-muted);margin-top:6px;">
+              Corrected to: <strong>${escHtml(categoryLabel(cls.user_corrected_category))}</strong>
+              at ${new Date(cls.corrected_at).toLocaleString('en-IN', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' })}
+            </div>
+          ` : ''}
         </div>
       </div>
 
@@ -542,6 +548,20 @@ router.get('/api/emails/:id', async (req, res) => {
         <div class="ai-summary">
           <div style="font-size:10px;font-family:'IBM Plex Mono',monospace;color:var(--accent-amber);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;font-style:normal;">✦ AI Summary</div>
           ${escHtml(cls.summary)}
+          ${cls?.id ? `
+            <div id="thumbs-${cls.id}" class="ai-thumbs" style="margin-top:8px;display:flex;gap:8px;">
+              <button hx-post="/api/emails/${email.id}/feedback"
+                      hx-vals='{"vote":"up","classification_id":"${cls.id}"}'
+                      hx-target="#thumbs-${cls.id}"
+                      hx-swap="outerHTML"
+                      style="background:none;border:none;cursor:pointer;font-size:18px;">&#x1F44D;</button>
+              <button hx-post="/api/emails/${email.id}/feedback"
+                      hx-vals='{"vote":"down","classification_id":"${cls.id}"}'
+                      hx-target="#thumbs-${cls.id}"
+                      hx-swap="outerHTML"
+                      style="background:none;border:none;cursor:pointer;font-size:18px;">&#x1F44E;</button>
+            </div>
+          ` : ''}
         </div>
       ` : ''}
 
@@ -623,6 +643,20 @@ router.get('/api/emails/:id', async (req, res) => {
       </div>
 
     </div>
+
+    <script>
+    (function() {
+      var el = document.getElementById('correction-affordance-${email.id}');
+      if (el && !el.dataset.timerSet) {
+        el.dataset.timerSet = '1';
+        setTimeout(function() {
+          el.style.opacity = '1';
+          el.style.pointerEvents = 'auto';
+          el.classList.add('correction-visible');
+        }, 3000);
+      }
+    })();
+    </script>
   `);
 });
 
@@ -866,26 +900,28 @@ function renderActionZone(cat, email, cls, extracted) {
             🏷️ Recategorize
           </button>
         </div>
-        <!-- Recategorize modal trigger (Alpine-driven inline) -->
-        <div x-data="{open:false}" style="margin-top:12px;">
-          <template x-if="open">
-            <div style="background:var(--bg-raised);border:1px solid var(--border-bright);border-radius:8px;padding:16px;">
-              <div style="font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:12px;">Select new category:</div>
-              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;">
-                ${['meeting_request','financial','legal','travel','pitch_deck','fyi','rewards_awards','other'].map(c => `
-                  <button class="action-btn btn-ghost badge-${c}"
-                          style="text-align:left;padding:8px 12px;"
-                          hx-post="/api/emails/${email.id}/reclassify"
-                          hx-vals='{"category":"${c}"}'
-                          hx-target="#email-detail"
-                          hx-swap="innerHTML"
-                          onclick="showToast('info','Recategorizing...')">
-                    ${escHtml(categoryLabel(c))}
-                  </button>
-                `).join('')}
+        <!-- Recategorize modal trigger (Alpine-driven inline) — wrapped for 3-second read timer (CORRECT-03) -->
+        <div id="correction-affordance-${email.id}" class="correction-affordance" style="opacity:0;pointer-events:none;transition:opacity 0.3s;">
+          <div x-data="{open:false}" style="margin-top:12px;">
+            <template x-if="open">
+              <div style="background:var(--bg-raised);border:1px solid var(--border-bright);border-radius:8px;padding:16px;">
+                <div style="font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:12px;">Select new category:</div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;">
+                  ${['meeting_request','financial','legal','travel','pitch_deck','fyi','rewards_awards','other'].map(c => `
+                    <button class="action-btn btn-ghost badge-${c}"
+                            style="text-align:left;padding:8px 12px;"
+                            hx-post="/api/emails/${email.id}/reclassify"
+                            hx-vals='{"category":"${c}"}'
+                            hx-target="#email-detail"
+                            hx-swap="innerHTML"
+                            onclick="showToast('info','Recategorizing...')">
+                      ${escHtml(categoryLabel(c))}
+                    </button>
+                  `).join('')}
+                </div>
               </div>
-            </div>
-          </template>
+            </template>
+          </div>
         </div>
       `;
     }

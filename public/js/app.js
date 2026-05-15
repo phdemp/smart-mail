@@ -207,6 +207,21 @@ function appState() {
         if (listPanel) htmx.trigger(listPanel, 'refresh');
       });
 
+      es.addEventListener('classification_updated', (e) => {
+        try {
+          const d = JSON.parse(e.data);
+          // Toast with domain memory message (D-10)
+          showToast('info', `Moved to ${categoryLabel(d.category)}. We'll remember this for future emails from ${d.domain}.`);
+          // Re-fetch email detail to update category badge (D-03)
+          const detail = document.getElementById('email-detail');
+          if (detail && d.email_id) {
+            htmx.ajax('GET', `/api/emails/${d.email_id}`, '#email-detail');
+          }
+          // Refresh email list badge (matches existing categoryChange pattern)
+          const listPanel = document.querySelector('.email-list-panel');
+          if (listPanel && window.htmx) htmx.trigger(listPanel, 'categoryChange');
+        } catch(err) {}
+      });
 
       es.onerror = () => {
         this.syncMode = 'disconnected';
