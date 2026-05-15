@@ -249,3 +249,57 @@ test('classify inserts row into llm_logs on error', async () => {
   assert.notEqual(row.outcome, 'success', 'outcome should not be success on provider error');
   assert.ok(row.latency_ms >= 0, 'latency_ms should be non-negative');
 });
+
+// ─── Soft-failure cascade tests (OBSERVE-06, Phase 4 Plan 02) ──────────────
+
+test('router cascades on soft failure (null category)', async () => {
+  const a = fake('a', async () => ({ category: null, summary: 'ok', urgency: 'normal', draft_reply: 'r' }));
+  const b = fake('b', async () => ({ category: 'fyi', summary: 'good summary', urgency: 'normal', draft_reply: 'r' }));
+  const r = createRouter({
+    providers: [a, b],
+    getConfig: () => ({ order: ['a', 'b'], enabled: ['a', 'b'], keys: {}, models: {} })
+  });
+  const out = await r.classify({ from_address: 'x@y.com', subject: 'z', body_text: '' }, { mode: 'full' });
+  assert.equal(out._provider, 'b', 'provider a should be skipped on null category soft fail');
+  assert.equal(out.category, 'fyi');
+});
+
+test('router cascades on soft failure (empty summary)', async () => {
+  const a = fake('a', async () => ({ category: 'fyi', summary: '', urgency: 'normal', draft_reply: 'r' }));
+  const b = fake('b', async () => ({ category: 'legal', summary: 'a summary', urgency: 'urgent', draft_reply: 'r' }));
+  const r = createRouter({
+    providers: [a, b],
+    getConfig: () => ({ order: ['a', 'b'], enabled: ['a', 'b'], keys: {}, models: {} })
+  });
+  const out = await r.classify({ from_address: 'x@y.com', subject: 'z', body_text: '' }, { mode: 'full' });
+  assert.equal(out._provider, 'b', 'provider a should be skipped on empty summary soft fail');
+  assert.equal(out.category, 'legal');
+});
+
+test('router does NOT cascade on low_confidence alone (not a soft fail)', async () => {
+  const a = fake('a', async () => ({ category: 'fyi', summary: 'ok', urgency: 'normal', low_confidence: true, draft_reply: 'r' }));
+  const r = createRouter({
+    providers: [a],
+    getConfig: () => ({ order: ['a'], enabled: ['a'], keys: {}, models: {} })
+  });
+  const out = await r.classify({ from_address: 'x@y.com', subject: 'z', body_text: '' }, { mode: 'full' });
+  assert.equal(out._provider, 'a', 'low_confidence alone should not trigger cascade');
+});
+
+test('router does NOT trip breaker on soft_fail', async () => {
+  let callCount = 0;
+  const a = fake('a', async () => {
+    callCount++;
+    return { category: null, summary: '', urgency: 'normal', draft_reply: 'r' };
+  });
+  const b = fake('b', async () => ({ category: 'fyi', summary: 'ok', urgency: 'normal', draft_reply: 'r' }));
+  const r = createRouter({
+    providers: [a, b],
+    getConfig: () => ({ order: ['a', 'b'], enabled: ['a', 'b'], keys: {}, models: {} })
+  });
+  // 4 calls — if breaker tripped after 3 soft fails, 4th call would skip 'a'
+  for (let i = 0; i < 4; i++) {
+    await r.classify({ from_address: 'x@y.com', subject: 'z', body_text: '' }, { mode: 'full' });
+  }
+  assert.equal(callCount, 4, 'breaker must not trip on soft failures — soft fail is a content issue not availability');
+});

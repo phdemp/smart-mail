@@ -1,4 +1,4 @@
-const { parseProviderResponse, DEFAULTS, SYSTEM_PROMPT } = require('./providers/base');
+const { parseProviderResponse, DEFAULTS, SYSTEM_PROMPT, CATEGORIES } = require('./providers/base');
 const { TokenBucket } = require('./ratelimiter');
 const { db } = require('../db');
 
@@ -111,6 +111,20 @@ function createRouter({ providers, getConfig, logger, usage }) {
         br.lastError = null;
         br.lastErrorAt = null;
         br.lastErrorMsg = null;
+        // Soft-failure gate: validate semantic correctness for classify mode only.
+        // Draft mode does not produce category/summary fields, so skip for 'draft'. (D-11, D-12, D-13; Pitfall 2)
+        const isSoftFail = mode !== 'draft' &&
+          (!CATEGORIES.includes(parsed.category) || !parsed.summary || parsed.summary.trim() === '');
+        if (isSoftFail) {
+          log({ provider: name, mode, outcome: 'soft_fail', latency_ms: Date.now() - start, email_id: email.id, user_id: userId, token_count: tokenCount });
+          try {
+            db.prepare(
+              "INSERT INTO llm_logs (ts, provider, user_id, email_id, token_count, outcome, latency_ms) VALUES (datetime('now'), ?, ?, ?, ?, ?, ?)"
+            ).run(name, userId != null ? userId : null, email.id, tokenCount, 'soft_fail', Date.now() - start);
+          } catch (_) {}
+          // Do NOT increment br.fails — soft fail is a content issue, not a provider availability issue (D-13)
+          continue;  // try next provider
+        }
         log({ provider: name, mode, outcome: 'success', latency_ms: Date.now() - start, email_id: email.id, user_id: userId, token_count: tokenCount });
         try {
           db.prepare(
