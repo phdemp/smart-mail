@@ -35,28 +35,30 @@ Declared values (all multiples of 4):
 | Token | Value | Usage |
 |-------|-------|-------|
 | xs | 4px | Icon gap inside pill, badge inner padding vertical |
-| sm | 8px | Gap between badge and text, between provider table cells |
-| md | 12px | Row padding inside health panel table rows |
-| base | 16px | Panel section padding, pill horizontal padding |
+| sm | 8px | Gap between badge and text, between provider table cells; pill strip vertical padding; row padding inside health panel table rows; failed count summary margin-top |
+| base | 16px | Panel section padding, pill horizontal padding; table wrapper horizontal padding |
 | lg | 24px | Section heading margin-bottom |
 | xl | 32px | Space above new settings section |
 | 2xl | 48px | Not used in this phase |
 
-Exceptions: Pill strip uses 10px vertical padding (between xs and md) to match existing dashboard banner height — see OBSERVE-04 pattern in RESEARCH.md. This is the only non-grid-aligned value and matches the existing banner at `dashboard.html:35`.
+Exceptions: none. The existing dashboard banners at `dashboard.html:35` and `dashboard.html:50` use `padding:10px 18px` (10px is off-grid). The new pill component does NOT replicate this — it uses 8px vertical padding to stay on the 4-point grid while matching the visual weight of those banners.
 
 ---
 
 ## Typography
 
 All sizes use the existing scale from `app.css`. No new type sizes are introduced.
+Exactly 2 font weights are used: 400 (regular) and 600 (semibold).
 
 | Role | Size | Family | Weight | Line Height | Usage |
 |------|------|--------|--------|-------------|-------|
 | Section heading | 13px (`--text-sm` = 0.84rem) | Syne | 600 | 1.4 | Health panel section title: "AI Provider Health" |
 | Body / table cell | 13px | Syne | 400 | 1.55 | Provider name, status label text, error message text |
-| Metadata / badge | 11px | IBM Plex Mono | 500 | 1.3 | Status badge text, timestamp, failed_count value |
+| Metadata / badge | 11px | IBM Plex Mono | 400 | 1.3 | Status badge text, timestamp, failed_count value |
 | Hint link | 11px | Syne | 400 | 1.3 | "Check your API key →" link in invalid_key rows |
-| Pill label | 13px | Syne | 500 | 1 | "AI features degraded" in dashboard pill |
+| Pill label | 13px | Syne | 400 | 1 | "AI features degraded" in dashboard pill |
+
+Weight assignment rationale: Section heading uses 600 to establish hierarchy. All other text uses 400 — IBM Plex Mono provides sufficient visual distinction for badge text through font family alone, making a third intermediate weight unnecessary. This keeps the weight system to exactly 2 values (400 and 600).
 
 Source: Pre-populated from `app.css` font size scale + existing Settings provider row inspection.
 
@@ -70,17 +72,17 @@ All values use existing CSS variables from `public/css/app.css`. No new colors a
 |------|----------|------------------|-------|
 | Dominant (60%) | `--bg-base` | `#f0f2f7` | Dashboard background, panel backgrounds |
 | Secondary (30%) | `--bg-panel` / `--bg-raised` | `#ffffff` / `#e8ecf5` | Settings panel surface, health table background |
-| Accent — amber (warning) | `--accent-amber` | `#f59e0b` | Dashboard degraded pill border + icon + "View status →" link, amber status badge background tint |
+| Accent — amber (warning) | `--accent-amber` | `#f59e0b` | Dashboard degraded pill border + icon + "View status →" link, amber status badge background tint, "Check your API key →" hint link |
 | Accent — green (ok) | `--accent-green` | `#10b981` | "ok / healthy" status badge |
-| Accent — red (error) | `--accent-red` | `#ef4444` | `invalid_key` / `breaker_open` status badge, "Check your API key →" link color |
+| Accent — red (error) | `--accent-red` | `#ef4444` | `invalid_key` / `http_5xx` / `timeout` / `network` / `invalid_json` status badges |
 | Text primary | `--text-primary` | `#1a2545` | All readable body copy in pill and panel |
 | Text muted | `--text-muted` | `#7a86a8` | Timestamp ("2 min ago"), "No activity yet" text, column labels |
 | Destructive | `--accent-red` | `#ef4444` | Destructive actions only — not introduced in this phase |
 
 **Accent reserved for:**
-- `--accent-amber`: Dashboard degraded pill (border, ⚠ icon, "View status →" link), amber status badges (`rate_limited`, `service_busy`, `breaker_open`)
+- `--accent-amber`: Dashboard degraded pill (border, ⚠ icon, "View status →" link), amber status badges (`rate_limited`, `service_busy`, `breaker_open`), "Check your API key →" hint link in `invalid_key` rows (softer than red; the row's badge already signals the error in red — the action link uses amber to be inviting rather than alarming)
 - `--accent-green`: "ok / healthy" provider status badge
-- `--accent-red`: `invalid_key` status badge, "Check your API key →" link, `http_5xx` / `timeout` / `network` / `invalid_json` status badges
+- `--accent-red`: `invalid_key` status badge (and `http_5xx`, `timeout`, `network`, `invalid_json` badges) — badge coloring only, NOT used for any link text
 
 **Status color mapping (exact — from existing `healthStyle()` in `settings.html:470`):**
 
@@ -99,15 +101,15 @@ Source: Pre-populated from `settings.html:470-478` (existing `healthStyle()` fun
 
 ### Component 1: Dashboard Degraded Pill (OBSERVE-04)
 
-**What it is:** A horizontal strip that appears above `#email-list` when any provider is in a non-ok, non-unknown state. Returns empty HTML when all providers are ok (HTMX innerHTML swap — wrapper div persists).
+**What it is:** A horizontal strip that appears above `#email-list` when any provider is in a non-ok, non-unknown state. Returns empty HTML when all providers are ok or unknown (HTMX innerHTML swap — wrapper div persists).
 
 **Visual specification:**
-- Background: `rgba(245,158,11,0.10)` — same tint as existing dashboard banner at `dashboard.html:35`
+- Background: `rgba(245,158,11,0.10)` — same tint as existing dashboard banners at `dashboard.html:35`
 - Bottom border: `1px solid rgba(245,158,11,0.35)` — matches existing amber banner border
-- Padding: `10px 16px` vertical/horizontal
-- Layout: flex row, `align-items:center`, `gap:12px`
+- Padding: `8px 16px` vertical/horizontal (8px is on the 4-point grid; existing banners use 10px which is off-grid — the new component does not replicate that value)
+- Layout: flex row, `align-items:center`, `gap:8px`
 - Icon: `⚠` at `--accent-amber`, `font-size:13px`
-- Label: "AI features degraded" — `color:var(--text-primary)`, `font-size:13px`, `font-family:'Syne'`, `font-weight:500`
+- Label: "AI features degraded" — `color:var(--text-primary)`, `font-size:13px`, `font-family:'Syne'`, `font-weight:400`
 - Link: "View status →" — `color:var(--accent-amber)`, `font-size:11px`, `margin-left:auto`, `text-decoration:none`, `font-family:'Syne'`, href=`/settings#providers`
 
 **HTMX wiring:**
@@ -121,9 +123,11 @@ Source: Pre-populated from `settings.html:470-478` (existing `healthStyle()` fun
 Placement: between `.panel-header` and `#email-list` in `views/dashboard.html`.
 
 **States:**
-- All providers ok or unknown: endpoint returns empty string — wrapper renders nothing
+- All providers ok or unknown: endpoint returns empty string — wrapper renders nothing visible
 - Any provider non-ok (non-unknown): endpoint returns amber pill HTML fragment
 - Loading (HTMX in-flight): wrapper is empty — no skeleton or loading indicator needed (30s cadence means stale data is acceptable)
+
+**Healthy state behavior (intentional):** When all providers are ok, the `/api/llm/health/pill` endpoint returns an empty string. The HTMX wrapper div becomes visually empty. No "all systems healthy" message is shown. This is correct and intentional — the absence of the pill IS the healthy signal. The wrapper remains in the DOM for continued polling.
 
 **Language constraint (hard):** "AI features degraded" — never "circuit breaker", "rate limited", "provider", or any provider name. End users never see technical status terminology.
 
@@ -137,23 +141,25 @@ Placement: between `.panel-header` and `#email-list` in `views/dashboard.html`.
 
 **Table columns (left to right):**
 1. Provider name — capitalized, `font-weight:600`, `color:var(--text-primary)`, `font-size:13px`
-2. Status badge — uses existing `healthStyle(s)` + `healthLabel(s)` functions; `font-size:11px`, `padding:2px 8px`, `border-radius:4px`, `font-family:'IBM Plex Mono'`
-3. Last error — `font-size:11px`, `color:var(--text-muted)`, truncated to 60 chars with `…` appended when longer; HTML-escaped via `escHtml()` to prevent XSS; empty rows show `—`
+2. Status badge — uses existing `healthStyle(s)` + `healthLabel(s)` functions; `font-size:11px`, `padding:2px 8px`, `border-radius:4px`, `font-family:'IBM Plex Mono'`, `font-weight:400`
+3. Last error — `font-size:11px`, `color:var(--text-muted)`, truncated to 60 chars with `…` appended when longer; HTML-escaped via `escHtml()` to prevent XSS; empty rows show `—`; unknown-status rows show "No activity yet" (see D-05)
 4. Last success — `font-size:11px`, `color:var(--text-muted)`, rendered as relative time using existing `smartTime()` helper (e.g., "2 min ago"); rows with no success show `—`
-5. Key hint link — conditional column: shown only for `invalid_key` status; text "Check your API key →"; `color:var(--accent-amber)`, `font-size:11px`, href anchors to provider's key input section (e.g., `/settings#provider-key-nvidia`)
+5. Key hint link — conditional column: shown only for `invalid_key` status; text "Check your API key →"; `color:var(--accent-amber)`, `font-size:11px`, `font-weight:400`, href anchors to provider's key input section (e.g., `/settings#provider-key-nvidia`)
+
+Note on hint link color: The link uses `--accent-amber`, not `--accent-red`. The status badge in column 2 already signals the error state in red. Using amber for the action link makes it inviting and actionable rather than alarming — two red elements in the same row would create visual noise without informational benefit.
 
 **Failed count summary (below table):**
-- Text: "X emails failed classification" — `font-size:12px`, `color:var(--text-muted)`, `margin-top:12px`
+- Text: "X emails failed classification" — `font-size:11px`, `color:var(--text-muted)`, `margin-top:8px`
 - `X` rendered in `color:var(--accent-red)` when `failed_count > 0`; `color:var(--text-muted)` when 0
 - Data sourced from `failed_count` field returned by `/api/llm/health` endpoint
 
 **Table wrapper:**
-- `margin-top:14px`, `padding:10px 12px`, `background:var(--bg-raised)`, `border:1px solid var(--border)`, `border-radius:6px`
+- `margin-top:16px`, `padding:8px 16px`, `background:var(--bg-raised)`, `border:1px solid var(--border)`, `border-radius:6px`
 - Matches existing usage/rate-limit panel styling at `settings.html:251`
 
 **Data source:** Existing `providerHealth` Alpine state object (populated by `loadLlmStatus()` from `/api/llm/status` — no new HTTP request needed for the status column). `failed_count` added to the `loadLlmStatus()` response shape via OBSERVE-01.
 
-**Unknown status row (D-05 — locked):** Grey dot + "· untested" text — never false green, never hidden. Matches existing `healthLabel()` return for `unknown`.
+**Unknown status row (D-05 — locked):** Grey dot + "· untested" badge label — never false green, never hidden. Last error cell shows "No activity yet" (in `color:var(--text-muted)`) rather than `—`. Last success cell shows `—`. Matches CONTEXT.md D-05: "Unknown status (never used) renders a grey dot + 'No activity yet' text."
 
 ---
 
@@ -179,13 +185,14 @@ The inline status badge on each existing provider row (already in `settings.html
 | Status: timeout | "⚠ timeout" |
 | Status: network | "⚠ network" |
 | Status: invalid_json | "⚠ parse error" |
-| Status: unknown | "· untested" |
-| No activity (unknown row, last error cell) | "—" |
-| No success yet (last success cell) | "—" |
+| Status: unknown | "· untested" (badge label) |
+| Unknown row — last error cell | "No activity yet" (color: `--text-muted`) |
+| Unknown row — last success cell | "—" |
+| No success yet (non-unknown rows, last success cell) | "—" |
 | Invalid key hint link | "Check your API key →" |
 | Failed count (none) | "0 emails failed classification" |
 | Failed count (some) | "{N} emails failed classification" |
-| Empty state (health panel, no providers ever called) | All rows show "· untested" with "—" in error and success columns |
+| Empty state (health panel, no providers ever called) | All rows show "· untested" badge, "No activity yet" in last error, "—" in last success |
 | Error state (health endpoint unreachable) | Health panel remains at last-known state — no error message surfaced to user; pill simply does not update |
 | Destructive actions | None in this phase |
 
@@ -193,7 +200,7 @@ The inline status badge on each existing provider row (already in `settings.html
 - End users (dashboard pill): see only "AI features degraded" — no provider names, no circuit-breaker terms, no rate-limit language
 - Operators (Settings health panel): see status codes, provider names, error excerpts — technical language is appropriate here
 
-Source: Pre-populated from CONTEXT.md specifics, ROADMAP.md risks, and existing `healthLabel()` in `settings.html:461-469`.
+Source: Pre-populated from CONTEXT.md specifics (including D-05 locked decision), ROADMAP.md risks, and existing `healthLabel()` in `settings.html:461-469`.
 
 ---
 
@@ -208,8 +215,8 @@ Clicking anywhere on the dashboard pill wrapper navigates to `/settings#provider
 ### Status table — no click interactions
 The health panel table is display-only. No row-level click, no expand/collapse. The only interactive element is the "Check your API key →" link in invalid_key rows.
 
-### Pill → empty response
-When the server returns empty string for `/api/llm/health/pill`, HTMX `hx-swap="innerHTML"` on the wrapper div clears it. The wrapper div itself stays in the DOM. This is required to preserve the polling trigger — do NOT use `hx-swap="outerHTML"` (see RESEARCH.md Pitfall 3).
+### Pill — empty response (healthy state)
+When the server returns empty string for `/api/llm/health/pill`, HTMX `hx-swap="innerHTML"` on the wrapper div clears it. The wrapper div itself stays in the DOM. This is required to preserve the polling trigger — do NOT use `hx-swap="outerHTML"` (see RESEARCH.md Pitfall 3). When all providers are ok, the pill wrapper renders as invisible — no "all healthy" message, no placeholder, no skeleton. The absence of the pill is the healthy signal. This is intentional behavior, not an oversight.
 
 ### Settings panel — data refresh
 The Settings health panel does not independently poll. It relies on the existing 2-second `loadLlmStatus()` polling loop already active on the Settings page during reclassify operations, and the initial `loadLlmStatus()` call on `init()`. `failed_count` is added to the existing response shape — no new fetch is introduced.
@@ -256,6 +263,10 @@ These notes capture design decisions left to Claude's Discretion in CONTEXT.md:
 
 6. **`soft_fail` outcome:** This is a backend-only change — no new UI element needed. It appears in `llm_logs` and is queryable for future analytics, but is not surfaced in Phase 4 UI.
 
+7. **Pill vertical padding:** Use `padding:8px 16px`. Do NOT use the 10px value from the existing banners — those are pre-existing off-grid values that are not being corrected in this phase, but the new pill component must not add another off-grid value.
+
+8. **Unknown-status last-error cell:** Render "No activity yet" text (not `—`) in `color:var(--text-muted)` when `h.status === 'unknown'`. This is a locked decision (D-05) — the grey dot + "No activity yet" text together confirm the provider has never been called.
+
 ---
 
 ## Checker Sign-Off
@@ -285,5 +296,6 @@ These notes capture design decisions left to Claude's Discretion in CONTEXT.md:
 ---
 
 *Phase: 4 — provider-observability*
-*UI-SPEC created: 2026-05-15*
-*Sources: CONTEXT.md (13 decisions used), RESEARCH.md (6 requirements mapped), app.css inspection (all tokens pre-populated), settings.html inspection (healthStyle/healthLabel pre-populated), SKILL.md (design direction reference)*
+*UI-SPEC revised: 2026-05-15*
+*Revision: checker-requested fixes (2nd pass) — removed md=12px token (not in standard set), replaced all 12px occurrences with 8px (sm token), fixed table wrapper padding from 10px/12px to 8px/16px, updated unknown-status copywriting to show "No activity yet" per CONTEXT.md D-05, corrected pill flex gap from 12px to 8px*
+*Sources: CONTEXT.md (13 decisions used, D-05 locked copy applied), RESEARCH.md (6 requirements mapped), app.css inspection (all tokens pre-populated), settings.html inspection (healthStyle/healthLabel pre-populated), dashboard.html:35+50 inspection (existing banner padding confirmed as 10px off-grid), SKILL.md (design direction reference)*
