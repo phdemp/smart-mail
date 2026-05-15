@@ -247,6 +247,44 @@ if (!puHasUserId) {
   `);
 }
 
+// ─── Phase 3: User correction loop ──────────────────────────────────────────
+
+// Phase 3: correction audit columns on classifications (CORRECT-01)
+try { db.exec(`ALTER TABLE classifications ADD COLUMN user_corrected_category TEXT`); } catch(e) {}
+try { db.exec(`ALTER TABLE classifications ADD COLUMN corrected_at DATETIME`); } catch(e) {}
+
+// Phase 3: sender_rules table — stores promoted domain → category rules (D-04)
+try {
+  db.exec(`
+    CREATE TABLE sender_rules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER,
+      domain TEXT,
+      category TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+} catch(e) {}
+try {
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_sender_rules_uq ON sender_rules(user_id, domain, category)');
+} catch(e) {}
+
+// Phase 3: ai_feedback table — thumbs up/down votes on AI summaries (D-11)
+try {
+  db.exec(`
+    CREATE TABLE ai_feedback (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      summary_id INTEGER REFERENCES classifications(id),
+      user_id INTEGER,
+      vote TEXT CHECK(vote IN ('up','down')),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+} catch(e) {}
+try {
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_feedback_uq ON ai_feedback(user_id, summary_id)');
+} catch(e) {}
+
 function getConfig(userId) {
   if (userId != null) {
     return db.prepare('SELECT * FROM account_config WHERE user_id = ?').get(userId);
