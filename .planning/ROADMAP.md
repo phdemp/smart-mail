@@ -8,7 +8,7 @@ IntelliMail has a working two-tier AI classifier in production. This milestone r
 
 - [ ] **Phase 1: Prompt Quality Baseline** - Eval corpus, split prompts, structured output, reliability infra — the gate for all subsequent work
 - [x] **Phase 2: Thread Context** - Full thread history passed to classification and draft calls; structured logging enabled *(Complete 2026-05-15)*
-- [ ] **Phase 3: User Correction Loop** - Inline correction affordance, sender-rule promotion, summary feedback — storage and consumer in one phase
+- [x] **Phase 3: User Correction Loop** - Inline correction affordance, sender-rule promotion, summary feedback — storage and consumer in one phase *(Complete 2026-05-15)*
 - [ ] **Phase 4: Provider Observability** - Health endpoint, structured logging UI, user-facing degraded indicator, soft-failure cascade
 - [ ] **Phase 5: AI Output UI** - Tier attribution, urgency tooltips, extracted data panels, draft visual treatment, progressive disclosure
 
@@ -82,14 +82,14 @@ Cross-cutting constraints:
 Plans:
 
 **Wave 0**
-- [ ] 03-01-PLAN.md — Test stubs: tests/correction.test.js — schema assertions, sender rule promotion, ai_feedback UPSERT
+- [x] 03-01-PLAN.md — Test stubs: tests/correction.test.js — schema assertions, sender rule promotion, ai_feedback UPSERT
 
 **Wave 1** *(blocked on Wave 0 completion)*
-- [ ] 03-02-PLAN.md — DB schema: classifications audit columns, sender_rules table, ai_feedback table
-- [ ] 03-03-PLAN.md — Classifier Tier 0: sender-rule lookup before rulesClassify() in classifyEmail()
+- [x] 03-02-PLAN.md — DB schema: classifications audit columns, sender_rules table, ai_feedback table
+- [x] 03-03-PLAN.md — Classifier Tier 0: sender-rule lookup before rulesClassify() in classifyEmail()
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 03-04-PLAN.md — Endpoint + UI: /reclassify extension, /feedback endpoint, setBroadcast injection, email detail fragment, app.js SSE listener
+- [x] 03-04-PLAN.md — Endpoint + UI: /reclassify extension, /feedback endpoint, setBroadcast injection, email detail fragment, app.js SSE listener
 
 Cross-cutting constraints:
 - All DB queries in /reclassify and /feedback MUST include `AND user_id = req.user.id` — cross-user classification/feedback access prevention (V4, ASVS L1)
