@@ -176,6 +176,26 @@ async function classifyEmail(userId, emailId) {
     return;
   }
 
+  // Tier 0: sender-rule override (D-06, CORRECT-05) — fires before regex, short-circuits immediately
+  const domain = (email.from_address || '').split('@')[1];
+  if (domain) {
+    const senderRule = db.prepare(
+      'SELECT category FROM sender_rules WHERE user_id = ? AND domain = ?'
+    ).get(userId, domain);
+    if (senderRule) {
+      const { urgency, urgency_reason } = rulesUrgency(senderRule.category, email);
+      const sub = email.subject || '';
+      const summary = `${email.from_name || email.from_address} sent: ${sub.substring(0, 80)}${sub.length > 80 ? '...' : ''}.`;
+      attempts.delete(attemptKey);
+      storeClassification(userId, emailId, {
+        category: senderRule.category, urgency, urgency_reason, summary,
+        extracted_data: {}, suggested_tone: 'professional', draft_reply: null,
+        source: 'rule'
+      }, email);
+      return;
+    }
+  }
+
   // Tier 1: instant rules
   const rulesCategory = rulesClassify(email);
   if (rulesCategory) {
