@@ -124,6 +124,22 @@ None. All threat register items from the plan's `<threat_model>` were addressed:
 - Wave 2 plan 03 (detail view + draft UX) can proceed: tierBadge() is already usable in detail header, same function signature.
 - No blockers.
 
+## Self-Check: PASSED
+
+All files verified present:
+- src/routes/api.js — FOUND
+- src/llm/templates.js — FOUND
+- tests/api/list-row-helpers.test.js — FOUND
+- tests/llm/templates.test.js — FOUND
+- .planning/phases/05-ai-output-ui/05-02-SUMMARY.md — FOUND
+
+All commits verified present:
+- c87e705 (Task 1 RED) — FOUND
+- cdd00d7 (Task 1 GREEN) — FOUND
+- 314820a (Task 2 RED) — FOUND
+- 78df1a2 (Task 2 GREEN) — FOUND
+- 3b4b971 (SUMMARY commit) — FOUND
+
 ---
 *Phase: 05-ai-output-ui*
 *Completed: 2026-05-18*
