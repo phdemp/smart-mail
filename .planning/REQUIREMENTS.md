@@ -63,7 +63,7 @@
 - [ ] **UI-03**: Extracted structured data (PNR for travel, amount due / due date for financial, platform for meetings) is surfaced in the email list and detail without requiring the user to open the full email — data exists in `extracted_data` JSON in the `classifications` table
 - [ ] **UI-04**: Draft replies are visually distinguished ("AI draft — review before sending") with a distinct background color and explicit attribution; they are never pre-populated in the active compose area without user action
 - [ ] **UI-05**: A tone selector (Brief / Formal / Warm) appears before draft generation is triggered; selection is passed as a prompt parameter to Call B (no backend schema changes required)
-- [ ] **UI-06**: The email detail view shows a provider attribution footer: "AI by [Provider] · [Model] · [latency]ms" — sourced from the `_provider` field returned by the router
+- [ ] **UI-06**: The email detail view shows a provider attribution footer: "AI by [Provider] · [latency]ms" — sourced from the `llm_logs` table (model_id not stored; model name deferred per D-15)
 - [ ] **UI-07**: AI annotations follow progressive disclosure: category + urgency badge in list view; summary shown on email open; draft reply shown only when the reply button is activated
 
 ---
