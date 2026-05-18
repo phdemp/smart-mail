@@ -56,6 +56,13 @@ const TABLE = {
     brief:        'Noted — will check before expiry.',
     warm:         'Thanks for letting me know — I\'ll review before the deadline.'
   },
+  request: {
+    formal:       'Thank you for your request. I will review and respond in due course.',
+    professional: 'Thank you for your request. I will review and respond shortly.',
+    friendly:     'Thanks for reaching out — I\'ll look into this and get back to you.',
+    brief:        'Received — will review and respond shortly.',
+    warm:         'Thanks for getting in touch — I\'ll look into your request and follow up.'
+  },
   other: GENERIC
 };
 
