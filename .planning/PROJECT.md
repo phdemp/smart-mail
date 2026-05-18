@@ -46,7 +46,7 @@ Production users of IntelliMail. Changes must not break what's working. Stabilit
 - [ ] Improved prompt templates: classification accuracy, summary quality, and draft reply relevance all measurably better
 - [ ] Thread-aware classification: full thread history passed to LLM, not just the triggering email
 - [ ] User feedback / correction: users can mark a classification as wrong; correction stored and visible
-- [ ] Richer AI output UI: summaries, urgency, extracted data, and draft replies displayed with more context and clarity
+- [x] Richer AI output UI: summaries, urgency, extracted data, and draft replies displayed with more context and clarity *(Validated in Phase 5)*
 - [x] Provider observability: visible health status per provider, last error, last success — surfaced in UI and/or admin view *(Validated in Phase 4)*
 - [ ] Reliable classification: silent failures eliminated; every in-scope email either classified or clearly marked as failed with reason
 
@@ -83,4 +83,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-18 — Phase 4 complete (provider observability)*
+*Last updated: 2026-05-18 — Phase 5 complete (AI Output UI: tier badges, urgency tooltip, attribution footer, draft UX with progressive disclosure)*
