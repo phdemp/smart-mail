@@ -674,16 +674,15 @@ router.get('/api/emails/:id', async (req, res) => {
 
         <div class="draft-section"
              x-show="draftVisible"
+             x-cloak
              x-transition:enter.duration.200ms
-             style="display:none;"
-             x-data="draftEditor({
-               emailId: '${email.id}',
-               initialBody: \`${escHtml(draftBody).replace(/`/g, '\\`')}\`,
-               initialTone: '${escHtml(draftTone)}',
-               initialSource: ${JSON.stringify(draftSource)},
-               toAddress: '${escHtml(draftTo)}',
-               subject: '${escHtml(draftSubject)}'
-             })">
+             data-email-id="${email.id}"
+             data-initial-body="${escHtml(draftBody)}"
+             data-initial-tone="${escHtml(draftTone)}"
+             data-initial-source="${escHtml(JSON.stringify(draftSource))}"
+             data-to-address="${escHtml(draftTo)}"
+             data-subject="${escHtml(draftSubject)}"
+             x-data="draftEditor($el.dataset)">
 
           <!-- Attribution label — always visible inside draft section -->
           <div class="draft-attribution-label">AI draft — review before sending</div>

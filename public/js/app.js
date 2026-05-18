@@ -248,12 +248,21 @@ function appState() {
 
 // ── Alpine: Draft Editor ──────────────────────────────────────────────────────
 
-function draftEditor({ emailId, initialBody, initialTone, initialSource, toAddress, subject }) {
+function draftEditor(dataset) {
+  // Read values from data-* attributes (CR-01: avoids JS template literal injection).
+  // dataset keys are camelCased by the browser: data-initial-body → dataset.initialBody.
+  // initialSource is JSON-encoded (null → "null", "template" → '"template"') — parse it.
+  const emailId      = dataset.emailId || '';
+  const initialBody  = dataset.initialBody || '';
+  const initialTone  = dataset.initialTone || '';
+  const initialSource = (() => { try { return JSON.parse(dataset.initialSource || 'null'); } catch { return null; } })();
+  const toAddress    = dataset.toAddress || '';
+  const subject      = dataset.subject || '';
   return {
     emailId,
     draftBody: initialBody || '',
     tone: initialTone || 'brief',
-    source: initialSource || null,   // 'template' | 'llm' | 'user' | null
+    source: initialSource,             // 'template' | 'llm' | 'user' | null
     toAddress: toAddress || '',
     subject: subject || '',
     regenerating: false,
