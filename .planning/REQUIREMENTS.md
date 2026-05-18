@@ -58,13 +58,13 @@
 
 ### AI Output UI (Phase 5)
 
-- [ ] **UI-01**: Every email in the list and detail view shows a tier attribution badge: "Rule" (green dot, regex match), "AI" (blue dot, LLM classified), or "Failed" (red dot, fallback/failed) — sourced from the `source` column already stored in `classifications`
-- [ ] **UI-02**: Hovering the urgency badge ("Urgent", "Moderate") shows a tooltip with the plain-text `urgency_reason` from the database — zero new data collection, purely a UI gap
-- [ ] **UI-03**: Extracted structured data (PNR for travel, amount due / due date for financial, platform for meetings) is surfaced in the email list and detail without requiring the user to open the full email — data exists in `extracted_data` JSON in the `classifications` table
-- [ ] **UI-04**: Draft replies are visually distinguished ("AI draft — review before sending") with a distinct background color and explicit attribution; they are never pre-populated in the active compose area without user action
-- [ ] **UI-05**: A tone selector (Brief / Formal / Warm) appears before draft generation is triggered; selection is passed as a prompt parameter to Call B (no backend schema changes required)
-- [ ] **UI-06**: The email detail view shows a provider attribution footer: "AI by [Provider] · [latency]ms" — sourced from the `llm_logs` table (model_id not stored; model name deferred per D-15)
-- [ ] **UI-07**: AI annotations follow progressive disclosure: category + urgency badge in list view; summary shown on email open; draft reply shown only when the reply button is activated
+- [x] **UI-01**: Every email in the list and detail view shows a tier attribution badge: "Rule" (green dot, regex match), "AI" (blue dot, LLM classified), or "Failed" (red dot, fallback/failed) — sourced from the `source` column already stored in `classifications`
+- [x] **UI-02**: Hovering the urgency badge ("Urgent", "Moderate") shows a tooltip with the plain-text `urgency_reason` from the database — zero new data collection, purely a UI gap
+- [x] **UI-03**: Extracted structured data (PNR for travel, amount due / due date for financial, platform for meetings) is surfaced in the email list and detail without requiring the user to open the full email — data exists in `extracted_data` JSON in the `classifications` table
+- [x] **UI-04**: Draft replies are visually distinguished ("AI draft — review before sending") with a distinct background color and explicit attribution; they are never pre-populated in the active compose area without user action
+- [x] **UI-05**: A tone selector (Brief / Formal / Warm) appears before draft generation is triggered; selection is passed as a prompt parameter to Call B (no backend schema changes required)
+- [x] **UI-06**: The email detail view shows a provider attribution footer: "AI by [Provider] · [latency]ms" — sourced from the `llm_logs` table (model_id not stored; model name deferred per D-15)
+- [x] **UI-07**: AI annotations follow progressive disclosure: category + urgency badge in list view; summary shown on email open; draft reply shown only when the reply button is activated
 
 ---
 
@@ -140,13 +140,13 @@ Explicitly excluded. Documented to prevent scope creep.
 | OBSERVE-04 | Phase 4 | Pending |
 | OBSERVE-05 | Phase 4 | Pending |
 | OBSERVE-06 | Phase 4 | Pending |
-| UI-01 | Phase 5 | Pending |
-| UI-02 | Phase 5 | Pending |
-| UI-03 | Phase 5 | Pending |
-| UI-04 | Phase 5 | Pending |
-| UI-05 | Phase 5 | Pending |
-| UI-06 | Phase 5 | Pending |
-| UI-07 | Phase 5 | Pending |
+| UI-01 | Phase 5 | Complete |
+| UI-02 | Phase 5 | Complete |
+| UI-03 | Phase 5 | Complete |
+| UI-04 | Phase 5 | Complete |
+| UI-05 | Phase 5 | Complete |
+| UI-06 | Phase 5 | Complete |
+| UI-07 | Phase 5 | Complete |
 
 **Coverage:**
 - v1 requirements: 38 total

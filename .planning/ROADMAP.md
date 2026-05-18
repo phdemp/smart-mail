@@ -10,7 +10,7 @@ IntelliMail has a working two-tier AI classifier in production. This milestone r
 - [x] **Phase 2: Thread Context** - Full thread history passed to classification and draft calls; structured logging enabled *(Complete 2026-05-15)*
 - [x] **Phase 3: User Correction Loop** - Inline correction affordance, sender-rule promotion, summary feedback — storage and consumer in one phase *(Complete 2026-05-15)*
 - [x] **Phase 4: Provider Observability** - Health endpoint, structured logging UI, user-facing degraded indicator, soft-failure cascade *(Complete 2026-05-18)*
-- [ ] **Phase 5: AI Output UI** - Tier attribution, urgency tooltips, extracted data panels, draft visual treatment, progressive disclosure
+- [x] **Phase 5: AI Output UI** - Tier attribution, urgency tooltips, extracted data panels, draft visual treatment, progressive disclosure *(Complete 2026-05-18)*
 
 ## Phase Details
 
@@ -176,4 +176,4 @@ Cross-cutting constraints:
 | 2. Thread Context | 5/5 | Complete | 2026-05-15 |
 | 3. User Correction Loop | 4/4 | Complete | 2026-05-15 |
 | 4. Provider Observability | 3/3 | Complete | 2026-05-18 |
-| 5. AI Output UI | 3/3 | In progress | - |
+| 5. AI Output UI | 3/3 | Complete | 2026-05-18 |

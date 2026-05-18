@@ -9,9 +9,9 @@ See: .planning/PROJECT.md (updated 2026-05-14)
 
 ## Current Position
 
-Phase: 5 in progress — all plans complete, pending verification
-Status: Phase 5 execution complete (3/3 plans — CSS, list view, detail+draft)
-Last activity: 2026-05-18 — Phase 5 all plans complete, verification pending
+Phase: 5 of 5 complete — milestone complete (Phase 1 deferred)
+Status: Phase 5 complete (3/3 plans, all UI requirements verified)
+Last activity: 2026-05-18 — Phase 5 complete (tier badges, urgency tooltip, attribution footer, draft UX)
 
 Progress: [██████████] 90%
 
