@@ -74,8 +74,8 @@ imapflow ──► mailparser ──► SQLite (emails)
 
 ```bash
 # 1. Clone the repo
-git clone https://gitlab.dil.in/ajaydata/xgen-intel.git
-cd xgen-intel
+git clone https://github.com/phdemp/smart-mail.git
+cd smart-mail
 
 # 2. Install dependencies
 npm install
