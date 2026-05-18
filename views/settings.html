@@ -557,6 +557,8 @@ function settingsApp() {
       await this.loadProviders();
       await this.loadLlmStatus();
       await this.loadDefaultKeysStatus();
+      // Refresh provider health every 30s so panel stays live mid-session (OBSERVE-03)
+      this._healthPollTimer = setInterval(() => this.loadLlmStatus(), 30000);
     },
 
     async loadLlmStatus() {
