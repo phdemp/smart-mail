@@ -664,10 +664,18 @@ router.get('/api/emails/:id', async (req, res) => {
         </div>
       </div>
 
-      <!-- Draft Editor -->
-      <div style="border-top:1px solid var(--border);padding-top:20px;margin-top:8px;">
-        <div style="font-size:11px;font-family:'IBM Plex Mono',monospace;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:14px;">— AI Draft Response —</div>
-        <div class="draft-editor"
+      <!-- Draft Editor — hidden by default, revealed on Reply click -->
+      <div style="border-top:1px solid var(--border);padding-top:20px;margin-top:8px;" x-data="{ draftVisible: false }">
+
+        <button class="action-btn btn-primary draft-reply-trigger"
+                @click="draftVisible = true; $nextTick(() => $el.closest('[x-data]').querySelector('.draft-section')?.scrollIntoView({behavior:'smooth', block:'nearest'}))">
+          &#x21A9; Reply
+        </button>
+
+        <div class="draft-section"
+             x-show="draftVisible"
+             x-transition:enter.duration.200ms
+             style="display:none;"
              x-data="draftEditor({
                emailId: '${email.id}',
                initialBody: \`${escHtml(draftBody).replace(/`/g, '\\`')}\`,
@@ -677,53 +685,54 @@ router.get('/api/emails/:id', async (req, res) => {
                subject: '${escHtml(draftSubject)}'
              })">
 
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
-            <span style="font-weight:600;font-size:13px;color:var(--text-secondary);">AI Draft Response</span>
-            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-              <span style="font-size:11px;color:var(--text-muted);">Tone:</span>
-              <template x-for="t in ['formal','professional','friendly','brief']">
-                <button class="action-btn btn-ghost"
-                        style="padding:4px 10px;font-size:11px;"
-                        :style="tone===t ? 'border-color:var(--accent-cyan);color:var(--accent-cyan)' : ''"
-                        @click="changeTone(t)" x-text="t"></button>
-              </template>
-              <button class="action-btn btn-ghost" style="padding:4px 10px;font-size:11px;"
-                      @click="regenerateDraft()" :disabled="regenerating">
-                <span x-show="!regenerating">↻ Regen</span>
-                <span x-show="regenerating">...</span>
-              </button>
+          <!-- Attribution label — always visible inside draft section -->
+          <div class="draft-attribution-label">AI draft — review before sending</div>
+
+          <!-- Tone picker — visible immediately on reveal -->
+          <div class="tone-picker">
+            <span class="tone-picker-label">Tone:</span>
+            <template x-for="t in ['Brief', 'Formal', 'Warm']">
+              <button class="tone-chip"
+                      :class="{ 'tone-chip--selected': tone === t.toLowerCase() }"
+                      @click="changeTone(t.toLowerCase())"
+                      x-text="t"></button>
+            </template>
+          </div>
+
+          <!-- Write yourself link -->
+          <button class="draft-skip-link" @click="skipAI()">Write yourself &#x2192;</button>
+
+          <!-- Draft content area — shown once draftBody exists or regenerating is true -->
+          <div x-show="draftBody || regenerating" style="margin-top:16px;">
+            <div style="margin-bottom:8px;">
+              <label style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;">To</label>
+              <input x-model="toAddress" type="email"
+                     style="width:100%;background:var(--bg-raised);border:1px solid var(--border);color:var(--text-primary);padding:6px 10px;border-radius:6px;font-size:13px;margin-top:4px;" />
+            </div>
+            <div style="margin-bottom:8px;">
+              <label style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;">Subject</label>
+              <input x-model="subject" type="text"
+                     style="width:100%;background:var(--bg-raised);border:1px solid var(--border);color:var(--text-primary);padding:6px 10px;border-radius:6px;font-size:13px;margin-top:4px;" />
+            </div>
+            <textarea x-model="draftBody" @input="debouncedSave()" rows="8"
+                      :disabled="regenerating" :style="regenerating ? 'opacity:0.45' : ''"></textarea>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;flex-wrap:wrap;gap:8px;">
+              <div style="display:flex;gap:12px;align-items:center;">
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-muted);" x-text="wordCount + ' words'"></span>
+                <span style="font-size:11px;color:var(--text-muted);" x-text="saveStatus"></span>
+              </div>
+              <div style="display:flex;gap:8px;">
+                <button class="action-btn btn-ghost" @click="saveDraft()">&#x1F4BE; Save</button>
+                <button class="action-btn btn-send" @click="sendDraft()" :disabled="sending">
+                  <span x-show="!sending">&#x1F4E4; Send</span>
+                  <span x-show="sending">Sending...</span>
+                </button>
+              </div>
             </div>
           </div>
 
-          <div style="margin-bottom:8px;">
-            <label style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;">To</label>
-            <input x-model="toAddress" type="email"
-                   style="width:100%;background:var(--bg-raised);border:1px solid var(--border);color:var(--text-primary);padding:6px 10px;border-radius:6px;font-size:13px;margin-top:4px;" />
-          </div>
-
-          <div style="margin-bottom:8px;">
-            <label style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;">Subject</label>
-            <input x-model="subject" type="text"
-                   style="width:100%;background:var(--bg-raised);border:1px solid var(--border);color:var(--text-primary);padding:6px 10px;border-radius:6px;font-size:13px;margin-top:4px;" />
-          </div>
-
-          <textarea x-model="draftBody" @input="debouncedSave()" rows="8"></textarea>
-
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;flex-wrap:wrap;gap:8px;">
-            <div style="display:flex;gap:12px;align-items:center;">
-              <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-muted);" x-text="wordCount + ' words'"></span>
-              <span style="font-size:11px;color:var(--text-muted);" x-text="saveStatus"></span>
-            </div>
-            <div style="display:flex;gap:8px;">
-              <button class="action-btn btn-ghost" @click="saveDraft()">💾 Save</button>
-              <button class="action-btn btn-send" @click="sendDraft()" :disabled="sending">
-                <span x-show="!sending">📤 Send</span>
-                <span x-show="sending">Sending...</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+        </div><!-- end .draft-section -->
+      </div><!-- end draftVisible wrapper -->
 
       ${llmLog ? `<div class="attribution-footer">AI by ${escHtml(llmLog.provider)} · ${llmLog.latency_ms}ms</div>` : ''}
 
@@ -808,8 +817,8 @@ function renderActionZone(cat, email, cls, extracted) {
                   onclick="showToast('success','✓ Marked as reviewed')">
             ✓ Mark Reviewed
           </button>
-          <button class="action-btn btn-ghost" onclick="document.querySelector('.draft-editor textarea')?.focus()">
-            ↩️ Draft Reply
+          <button class="action-btn btn-ghost" onclick="document.getElementById('email-detail').querySelector('.draft-reply-trigger')?.click()">
+            &#x21A9;&#xFE0F; Draft Reply
           </button>
         </div>
       `;
@@ -832,8 +841,8 @@ function renderActionZone(cat, email, cls, extracted) {
                   onclick="showToast('warning','📌 Flagged for lawyer review')">
             📌 Flag for Lawyer
           </button>
-          <button class="action-btn btn-ghost" onclick="document.querySelector('.draft-editor textarea')?.focus()">
-            ↩️ Draft Formal Acknowledgment
+          <button class="action-btn btn-ghost" onclick="document.getElementById('email-detail').querySelector('.draft-reply-trigger')?.click()">
+            &#x21A9;&#xFE0F; Draft Formal Acknowledgment
           </button>
         </div>
       `;
@@ -863,8 +872,8 @@ function renderActionZone(cat, email, cls, extracted) {
              download style="text-decoration:none;">
             📅 Add to Calendar
           </a>
-          <button class="action-btn btn-ghost" onclick="document.querySelector('.draft-editor textarea')?.focus()">
-            ↩️ Draft Reply
+          <button class="action-btn btn-ghost" onclick="document.getElementById('email-detail').querySelector('.draft-reply-trigger')?.click()">
+            &#x21A9;&#xFE0F; Draft Reply
           </button>
         </div>
       `;
@@ -881,20 +890,12 @@ function renderActionZone(cat, email, cls, extracted) {
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="action-btn btn-accept"
-                  hx-post="/api/emails/${email.id}/draft/regen"
-                  hx-vals='{"tone":"friendly"}'
-                  hx-target=".draft-editor textarea"
-                  hx-swap="none"
-                  onclick="showToast('info','Draft updated — expressing interest')">
-            👍 Interested — Draft Reply
+                  onclick="document.getElementById('email-detail').querySelector('.draft-reply-trigger')?.click(); showToast('info','Click a tone to draft your reply')">
+            &#x1F44D; Interested — Draft Reply
           </button>
           <button class="action-btn btn-decline"
-                  hx-post="/api/emails/${email.id}/draft/regen"
-                  hx-vals='{"tone":"professional","intent":"decline"}'
-                  hx-target=".draft-editor textarea"
-                  hx-swap="none"
-                  onclick="showToast('info','Draft updated — polite decline')">
-            👎 Pass — Polite Decline
+                  onclick="document.getElementById('email-detail').querySelector('.draft-reply-trigger')?.click(); showToast('info','Click a tone to draft your reply')">
+            &#x1F44E; Pass — Polite Decline
           </button>
         </div>
       `;
@@ -916,8 +917,8 @@ function renderActionZone(cat, email, cls, extracted) {
                   onclick="showToast('info','🗑️ Moved to Trash'); htmx.trigger(document.querySelector('.email-list-panel'),'categoryChange'); this.closest('#email-detail').innerHTML='<div style=\'padding:48px;text-align:center;color:var(--text-muted);\'>Moved to Trash</div>'">
             🗑️ Delete
           </button>
-          <button class="action-btn btn-ghost" onclick="document.querySelector('.draft-editor textarea')?.focus()">
-            ↩️ Draft Reply
+          <button class="action-btn btn-ghost" onclick="document.getElementById('email-detail').querySelector('.draft-reply-trigger')?.click()">
+            &#x21A9;&#xFE0F; Draft Reply
           </button>
         </div>
       `;
@@ -949,8 +950,8 @@ function renderActionZone(cat, email, cls, extracted) {
                   onclick="showToast('success','✓ Marked as noted')">
             ✓ Mark Noted
           </button>
-          <button class="action-btn btn-ghost" onclick="document.querySelector('.draft-editor textarea')?.focus()">
-            ↩️ Draft Reply
+          <button class="action-btn btn-ghost" onclick="document.getElementById('email-detail').querySelector('.draft-reply-trigger')?.click()">
+            &#x21A9;&#xFE0F; Draft Reply
           </button>
         </div>
       `;
@@ -976,8 +977,8 @@ function renderActionZone(cat, email, cls, extracted) {
                   onclick="showToast('info','🗑️ Moved to Trash'); htmx.trigger(document.querySelector('.email-list-panel'),'categoryChange'); this.closest('#email-detail').innerHTML='<div style=\'padding:48px;text-align:center;color:var(--text-muted);\'>Moved to Trash</div>'">
             🗑️ Delete
           </button>
-          <button class="action-btn btn-ghost" onclick="document.querySelector('.draft-editor textarea')?.focus()">
-            ↩️ Draft Reply
+          <button class="action-btn btn-ghost" onclick="document.getElementById('email-detail').querySelector('.draft-reply-trigger')?.click()">
+            &#x21A9;&#xFE0F; Draft Reply
           </button>
         </div>
       `;
