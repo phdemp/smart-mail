@@ -540,7 +540,7 @@ router.get('/api/emails/:id', async (req, res) => {
   // The client auto-regenerates in-place when source='template' on open, so the
   // server-side path here only needs to handle genuinely empty bodies.
   let draftBody = draft?.body || cls?.draft_reply || '';
-  const draftTone = draft?.tone || cls?.suggested_tone || 'professional';
+  const draftTone = draft?.tone || cls?.suggested_tone || 'brief';
   const draftSubject = draft?.subject || 'Re: ' + email.subject;
   const draftTo = draft?.to_address || email.from_address;
   const draftSource = draft?.source || null;
