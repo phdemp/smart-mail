@@ -310,6 +310,64 @@
     </button>
   </div>
 
+  <!-- AI Provider Health panel (OBSERVE-03) -->
+  <div class="settings-section" id="providers">
+    <h3 style="font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:8px;">AI Provider Health</h3>
+    <div style="margin-top:16px;padding:8px 16px;background:var(--bg-raised);border:1px solid var(--border);border-radius:6px;">
+      <table style="width:100%;border-collapse:collapse;">
+        <thead>
+          <tr>
+            <th scope="col" style="text-align:left;font-size:11px;font-weight:600;color:var(--text-muted);padding:4px 8px;border-bottom:1px solid var(--border);">Provider</th>
+            <th scope="col" style="text-align:left;font-size:11px;font-weight:600;color:var(--text-muted);padding:4px 8px;border-bottom:1px solid var(--border);">Status</th>
+            <th scope="col" style="text-align:left;font-size:11px;font-weight:600;color:var(--text-muted);padding:4px 8px;border-bottom:1px solid var(--border);">Last error</th>
+            <th scope="col" style="text-align:left;font-size:11px;font-weight:600;color:var(--text-muted);padding:4px 8px;border-bottom:1px solid var(--border);">Last success</th>
+            <th scope="col" style="text-align:left;font-size:11px;font-weight:600;color:var(--text-muted);padding:4px 8px;border-bottom:1px solid var(--border);"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="name in ['nvidia', 'groq', 'gemini', 'deepseek']" :key="'hp-'+name">
+            <tr>
+              <td style="font-weight:600;text-transform:capitalize;padding:6px 8px;font-size:13px;color:var(--text-primary);" x-text="name"></td>
+              <td style="padding:6px 8px;">
+                <span :style="'font-size:11px;padding:2px 8px;border-radius:4px;font-family:\'IBM Plex Mono\',monospace;' + healthStyle((providerHealth[name] || {}).status)"
+                      x-text="healthLabel((providerHealth[name] || {}).status || 'unknown')"
+                      :title="(providerHealth[name] && providerHealth[name].last_error_msg) || ''"></span>
+              </td>
+              <td style="font-size:11px;color:var(--text-muted);padding:6px 8px;">
+                <template x-if="(providerHealth[name] || {}).status === 'unknown' || !(providerHealth[name])">
+                  <span style="color:var(--text-muted);">No activity yet</span>
+                </template>
+                <template x-if="(providerHealth[name] || {}).status !== 'unknown' && providerHealth[name] && providerHealth[name].last_error_msg">
+                  <span x-text="providerHealth[name].last_error_msg.length > 60 ? providerHealth[name].last_error_msg.slice(0, 60) + '…' : providerHealth[name].last_error_msg"></span>
+                </template>
+                <template x-if="(providerHealth[name] || {}).status !== 'unknown' && providerHealth[name] && !providerHealth[name].last_error_msg">
+                  <span>—</span>
+                </template>
+              </td>
+              <td style="font-size:11px;color:var(--text-muted);padding:6px 8px;"
+                  x-text="(providerHealth[name] && providerHealth[name].last_success_at) ? smartTime(providerHealth[name].last_success_at) : '—'">
+              </td>
+              <template x-if="(providerHealth[name] || {}).status === 'invalid_key'">
+                <td style="padding:6px 8px;">
+                  <a :href="'/settings#provider-key-' + name"
+                     style="font-size:11px;color:var(--accent-amber);text-decoration:none;">
+                    Check your API key →
+                  </a>
+                </td>
+              </template>
+              <template x-if="(providerHealth[name] || {}).status !== 'invalid_key'">
+                <td></td>
+              </template>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+      <p style="font-size:11px;color:var(--text-muted);margin-top:8px;margin-bottom:0;">
+        <span :style="failedCount > 0 ? 'color:var(--accent-red)' : ''" x-text="failedCount"></span> emails failed classification
+      </p>
+    </div>
+  </div>
+
   </div><!-- /AI Providers tab -->
 
   <!-- ── Email Account tab (continued) ───────────────────────────────── -->
@@ -456,6 +514,7 @@ function settingsApp() {
     usageLoading: false,
     dragIdx: null,
     fallbackCount: 0,
+    failedCount: 0,
     providerHealth: {},
     anyProviderUsable: true,
     healthLabel(s) {
@@ -506,6 +565,7 @@ function settingsApp() {
         if (res.ok) {
           const d = await res.json();
           this.fallbackCount = d.fallback_count || 0;
+          this.failedCount = d.failed_count || 0;
           this.providerHealth = d.provider_health || {};
           this.anyProviderUsable = d.any_provider_usable !== false;
         }
