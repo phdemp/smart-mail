@@ -9,7 +9,7 @@ IntelliMail has a working two-tier AI classifier in production. This milestone r
 - [ ] **Phase 1: Prompt Quality Baseline** - Eval corpus, split prompts, structured output, reliability infra — the gate for all subsequent work
 - [x] **Phase 2: Thread Context** - Full thread history passed to classification and draft calls; structured logging enabled *(Complete 2026-05-15)*
 - [x] **Phase 3: User Correction Loop** - Inline correction affordance, sender-rule promotion, summary feedback — storage and consumer in one phase *(Complete 2026-05-15)*
-- [ ] **Phase 4: Provider Observability** - Health endpoint, structured logging UI, user-facing degraded indicator, soft-failure cascade
+- [x] **Phase 4: Provider Observability** - Health endpoint, structured logging UI, user-facing degraded indicator, soft-failure cascade *(Complete 2026-05-18)*
 - [ ] **Phase 5: AI Output UI** - Tier attribution, urgency tooltips, extracted data panels, draft visual treatment, progressive disclosure
 
 ## Phase Details
@@ -116,13 +116,13 @@ Cross-cutting constraints:
 Plans:
 
 **Wave 0**
-- [ ] 04-01-PLAN.md — Wave 0 test stubs: tests/api/health.test.js (new), tests/server.test.js (new)
+- [x] 04-01-PLAN.md — Wave 0 test stubs: tests/api/health.test.js (new), tests/server.test.js (new)
 
 **Wave 1** *(blocked on Wave 0 completion)*
-- [ ] 04-02-PLAN.md — Backend: /api/llm/health + /api/llm/health/pill endpoints (api.js), soft-failure gate + CATEGORIES import (router.js), startup warmup delay (server.js), 4 new router test cases
+- [x] 04-02-PLAN.md — Backend: /api/llm/health + /api/llm/health/pill endpoints (api.js), soft-failure gate + CATEGORIES import (router.js), startup warmup delay (server.js), 4 new router test cases
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 04-03-PLAN.md — Frontend: Settings health panel (settings.html), dashboard pill HTMX wrapper (dashboard.html)
+- [x] 04-03-PLAN.md — Frontend: Settings health panel (settings.html), dashboard pill HTMX wrapper (dashboard.html)
 
 Cross-cutting constraints:
 - New /api/llm/health routes must NOT be added to PUBLIC_API_PATHS — global requireAuth in server.js:74-81 covers them (V2, ASVS L1)
@@ -158,6 +158,6 @@ Cross-cutting constraints:
 |-------|----------------|--------|-----------|
 | 1. Prompt Quality Baseline | 0/TBD | Not started | - |
 | 2. Thread Context | 5/5 | Complete | 2026-05-15 |
-| 3. User Correction Loop | 0/4 | Planned | - |
-| 4. Provider Observability | 0/3 | Planned | - |
+| 3. User Correction Loop | 4/4 | Complete | 2026-05-15 |
+| 4. Provider Observability | 3/3 | Complete | 2026-05-18 |
 | 5. AI Output UI | 0/TBD | Not started | - |

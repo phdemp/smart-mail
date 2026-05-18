@@ -5,13 +5,13 @@
 See: .planning/PROJECT.md (updated 2026-05-14)
 
 **Core value:** Every email a user receives should be understood by the system: correctly categorized, concisely summarized, and ready for action — without the user having to open it first.
-**Current focus:** Phase 4 — Provider Observability
+**Current focus:** Phase 5 — AI Output UI
 
 ## Current Position
 
-Phase: 3 of 5 complete → Phase 4 planned, ready to execute
-Status: Phase 4 planning complete (3 plans, 3 waves); ready to execute
-Last activity: 2026-05-15 — Phase 4 planned (3 plans created, verification passed)
+Phase: 4 of 5 complete → Phase 5 ready to plan
+Status: Phase 4 execution complete (3/3 plans, all OBSERVE requirements verified)
+Last activity: 2026-05-18 — Phase 4 complete (health endpoints, soft-fail cascade, settings panel, dashboard pill)
 
 Progress: [██████████] 90%
 
@@ -68,5 +68,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-05-15
-Stopped at: Phase 4 UI-SPEC approved — ready to plan
-Resume file: .planning/phases/04-provider-observability/04-UI-SPEC.md
+Stopped at: Phase 4 execution verified — ready to plan Phase 5
+Resume file: .planning/phases/04-provider-observability/04-VERIFICATION.md
