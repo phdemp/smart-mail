@@ -252,12 +252,13 @@ function draftEditor({ emailId, initialBody, initialTone, initialSource, toAddre
   return {
     emailId,
     draftBody: initialBody || '',
-    tone: initialTone || 'professional',
+    tone: initialTone || 'brief',
     source: initialSource || null,   // 'template' | 'llm' | 'user' | null
     toAddress: toAddress || '',
     subject: subject || '',
     regenerating: false,
     sending: false,
+    skipMode: false,
     saveStatus: 'Saved',
 
     get wordCount() {
@@ -274,14 +275,6 @@ function draftEditor({ emailId, initialBody, initialTone, initialSource, toAddre
           clearTimeout(timer);
           timer = setTimeout(() => this.saveDraft(), 2000);
         };
-      }
-      // Auto-upgrade on first open: if the stored draft is empty OR was a
-      // template fallback, try the router now. User-edited drafts (source='user')
-      // and known-LLM drafts (source='llm') are left alone.
-      const needsRegen = !this.draftBody || !this.draftBody.trim() || this.source === 'template';
-      if (needsRegen) {
-        this.tone = this.tone || 'professional';
-        this.regenerateDraft();
       }
     },
 
@@ -380,6 +373,13 @@ function draftEditor({ emailId, initialBody, initialTone, initialSource, toAddre
       } finally {
         this.sending = false;
       }
+    },
+
+    skipAI() {
+      this.draftBody = '';
+      this.source = 'user';
+      this.skipMode = true;
+      this.saveStatus = '';
     }
   };
 }
