@@ -144,9 +144,25 @@ Cross-cutting constraints:
   3. Extracted structured data (PNR for travel, amount due / due date for financial, platform for meetings) is visible in the email list and detail without opening the full email — sourced from extracted_data JSON already in the classifications table
   4. Draft replies are visually distinguished with "AI draft — review before sending" attribution and a distinct background; they are never pre-populated in the active compose area without explicit user action
   5. A tone selector (Brief / Formal / Warm) appears before draft generation is triggered; the selection is passed as a prompt parameter to Call B with no backend schema changes
-  6. The email detail view shows a provider attribution footer: "AI by [Provider] · [Model] · [latency]ms"
-**Plans**: TBD
-**UI hint**: yes
+  6. The email detail view shows a provider attribution footer: "AI by [Provider] · [latency]ms"
+**Plans**: 3 plans
+
+Plans:
+
+**Wave 1** *(independent — can run in parallel)*
+- [ ] 05-01-PLAN.md — CSS foundation: neomorphic shadow variables + all Phase 5 component classes (public/css/app.css)
+- [ ] 05-02-PLAN.md — List view changes: SQL SELECT patch, tierBadge() + keyFactLine() helpers, list row template, templates.js warm tone (src/routes/api.js, src/llm/templates.js)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 05-03-PLAN.md — Detail view + draft UX: tier badge in header, urgency tooltip, llm_logs attribution footer, draft section restructure, renderActionZone() updates, draftEditor() Alpine updates (src/routes/api.js, public/js/app.js)
+
+Cross-cutting constraints:
+- All new user-sourced data in HTML template literals MUST use escHtml() — XSS prevention (V5, ASVS L1)
+- CSS variables only — no hardcoded hex values in any new CSS declaration
+- No border on tier badges (except .tone-chip--selected) — shadow defines edges (sketch-findings constraint)
+- FAILED badge MUST have box-shadow: var(--shadow-convex-sm) — convex constraint from sketch-findings
+- Draft section MUST NOT auto-populate on email open — only after Reply button click (D-13)
+- `node --test "tests/**/*.test.js"` must pass green (141+ tests) before each wave merge and before `/gsd-verify-work`
 
 **Risks:**
 - Individual transparency features each seem low-density; the aggregate cognitive load of all annotations visible simultaneously is the real risk; test with the full inbox loaded before finalizing which annotations appear in list view vs detail view only
@@ -160,4 +176,4 @@ Cross-cutting constraints:
 | 2. Thread Context | 5/5 | Complete | 2026-05-15 |
 | 3. User Correction Loop | 4/4 | Complete | 2026-05-15 |
 | 4. Provider Observability | 3/3 | Complete | 2026-05-18 |
-| 5. AI Output UI | 0/TBD | Not started | - |
+| 5. AI Output UI | 0/3 | Not started | - |
