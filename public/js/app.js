@@ -198,13 +198,15 @@ function appState() {
       });
 
       es.addEventListener('classification_done', (e) => {
-        const data = JSON.parse(e.data);
-        // Decrement the "currently classifying" counter.
-        if (this.pendingClassifying > 0) this.pendingClassifying -= 1;
-        if (this.pendingClassifying === 0) this.classifyTotal = 0;
-        // Refresh the email list so the pending badge updates to the real category
-        const listPanel = document.querySelector('[hx-get*="/api/emails"]');
-        if (listPanel) htmx.trigger(listPanel, 'refresh');
+        try {
+          JSON.parse(e.data);
+          // Decrement the "currently classifying" counter.
+          if (this.pendingClassifying > 0) this.pendingClassifying -= 1;
+          if (this.pendingClassifying === 0) this.classifyTotal = 0;
+          // Refresh the email list so the pending badge updates to the real category
+          const listPanel = document.querySelector('[hx-get*="/api/emails"]');
+          if (listPanel) htmx.trigger(listPanel, 'refresh');
+        } catch (err) {}
       });
 
       es.addEventListener('classification_updated', (e) => {
