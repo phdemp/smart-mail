@@ -496,6 +496,9 @@ router.get('/api/emails/:id', async (req, res) => {
 
   const cls = db.prepare('SELECT * FROM classifications WHERE email_id = ? AND user_id = ?').get(email.id, req.user.id);
   const draft = db.prepare('SELECT * FROM drafts WHERE email_id = ? AND user_id = ? ORDER BY id DESC LIMIT 1').get(email.id, req.user.id);
+  const llmLog = (cls?.source === 'llm' || cls?.source === 'fallback')
+    ? db.prepare('SELECT provider, latency_ms FROM llm_logs WHERE email_id = ? AND outcome = ? ORDER BY ts DESC LIMIT 1').get(email.id, 'success')
+    : null;
 
   // Mark as read
   db.prepare('UPDATE emails SET is_read = 1 WHERE id = ? AND user_id = ?').run(email.id, req.user.id);
@@ -560,7 +563,8 @@ router.get('/api/emails/:id', async (req, res) => {
             </div>
             <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
               <span class="badge badge-${escHtml(cat)}">${escHtml(categoryLabel(cat))}</span>
-              ${urg !== 'normal' ? `<span class="badge" style="background:${urg === 'urgent' ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)'};color:${urg === 'urgent' ? 'var(--accent-red)' : 'var(--accent-amber)'};border-color:${urg === 'urgent' ? 'rgba(239,68,68,0.3)' : 'rgba(245,158,11,0.3)'};">${urg.toUpperCase()}</span>` : ''}
+              ${tierBadge(cls?.source, cls?.low_confidence)}
+              ${urg !== 'normal' ? `<span class="badge" tabindex="0"${cls?.urgency_reason ? ` title="${escHtml(cls.urgency_reason)}"` : ''} style="background:${urg === 'urgent' ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)'};color:${urg === 'urgent' ? 'var(--accent-red)' : 'var(--accent-amber)'};border-color:${urg === 'urgent' ? 'rgba(239,68,68,0.3)' : 'rgba(245,158,11,0.3)'};">${urg.toUpperCase()}</span>` : ''}
               <button class="action-btn btn-ghost" style="padding:4px 10px;font-size:11px;"
                       hx-post="/api/emails/${email.id}/star"
                       hx-swap="none"
@@ -720,6 +724,8 @@ router.get('/api/emails/:id', async (req, res) => {
           </div>
         </div>
       </div>
+
+      ${llmLog ? `<div class="attribution-footer">AI by ${escHtml(llmLog.provider)} · ${llmLog.latency_ms}ms</div>` : ''}
 
     </div>
 
