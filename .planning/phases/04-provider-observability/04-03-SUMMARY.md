@@ -87,14 +87,14 @@ tasks-pending: 1 (checkpoint:human-verify — awaiting human verification)
 - `views/settings.html` — failedCount state property, loadLlmStatus() update, full AI Provider Health section
 - `views/dashboard.html` — HTMX polling wrapper div inserted between panel-header and #email-list
 
-## Requirements Satisfied (automated tasks only)
+## Requirements Satisfied
 
-- **OBSERVE-03:** Settings health panel renders per-provider status table (pending human verification)
-- **OBSERVE-04:** Dashboard pill wrapper polls /api/llm/health/pill every 30s with hx-swap=innerHTML (pending human verification)
+- **OBSERVE-03:** Settings health panel renders per-provider status table — verified by human (2026-05-18)
+- **OBSERVE-04:** Dashboard pill wrapper polls /api/llm/health/pill every 30s with hx-swap=innerHTML — verified by human (2026-05-18)
 
 ## Checkpoint Status
 
-**Task 3 (checkpoint:human-verify)** is PENDING — the plan requires human visual verification before this plan can be marked complete. Both automated tasks passed automated verification and test suite (93 pass, 0 fail).
+**Task 3 (checkpoint:human-verify)** — APPROVED by user (2026-05-18). Both components verified visually: Settings AI Provider Health panel and dashboard degraded pill wrapper confirmed rendering correctly.
 
 ## Deviations from Plan
 
