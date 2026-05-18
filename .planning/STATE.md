@@ -9,9 +9,9 @@ See: .planning/PROJECT.md (updated 2026-05-14)
 
 ## Current Position
 
-Phase: 5 in progress — Wave 1 complete, Wave 2 pending
-Status: Phase 5 execution in progress (2/3 plans complete — 05-01 CSS, 05-02 list view)
-Last activity: 2026-05-18 — Phase 5 Wave 1 complete (CSS foundation + list view tier badges)
+Phase: 5 in progress — all plans complete, pending verification
+Status: Phase 5 execution complete (3/3 plans — CSS, list view, detail+draft)
+Last activity: 2026-05-18 — Phase 5 all plans complete, verification pending
 
 Progress: [██████████] 90%
 

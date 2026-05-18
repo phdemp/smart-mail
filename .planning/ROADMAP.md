@@ -154,7 +154,7 @@ Plans:
 - [x] 05-02-PLAN.md — List view changes: SQL SELECT patch, tierBadge() + keyFactLine() helpers, list row template, templates.js warm tone (src/routes/api.js, src/llm/templates.js)
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 05-03-PLAN.md — Detail view + draft UX: tier badge in header, urgency tooltip, llm_logs attribution footer, draft section restructure, renderActionZone() updates, draftEditor() Alpine updates (src/routes/api.js, public/js/app.js)
+- [x] 05-03-PLAN.md — Detail view + draft UX: tier badge in header, urgency tooltip, llm_logs attribution footer, draft section restructure, renderActionZone() updates, draftEditor() Alpine updates (src/routes/api.js, public/js/app.js)
 
 Cross-cutting constraints:
 - All new user-sourced data in HTML template literals MUST use escHtml() — XSS prevention (V5, ASVS L1)
@@ -176,4 +176,4 @@ Cross-cutting constraints:
 | 2. Thread Context | 5/5 | Complete | 2026-05-15 |
 | 3. User Correction Loop | 4/4 | Complete | 2026-05-15 |
 | 4. Provider Observability | 3/3 | Complete | 2026-05-18 |
-| 5. AI Output UI | 2/3 | In progress | - |
+| 5. AI Output UI | 3/3 | In progress | - |
