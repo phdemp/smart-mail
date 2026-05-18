@@ -36,18 +36,21 @@ Source: Skill (sketch-findings-NeuralInbox) — strict 4-point scale confirmed.
 
 | Token | Value | Usage |
 |-------|-------|-------|
-| xs | 4px | Tier badge dot gap to label text; icon-to-text gaps |
-| sm | 8px | Badge row gap; tone chip gap; footer padding inline |
+| xs | 4px | Tier badge dot gap to label text; icon-to-text gaps; tier-lc-suffix margin-left |
+| sm | 8px | Badge row gap; tone chip gap; footer padding inline; tier dot diameter; chip padding block; key-fact margin-bottom |
 | md | 16px | Panel padding; draft section padding-top |
 | lg | 24px | Email detail outer padding (existing) |
 | xl | 32px | Major section separation in email detail |
 | 2xl | 48px | Empty state vertical centering |
 
 Exceptions:
-- Tier badge dot: 6–8px diameter circle (discretion: use 7px as midpoint)
+- Tier badge dot: 8px diameter circle (sm token)
 - Tier badge dot-to-label gap: 4px (xs)
-- Badge row gap between category badge and tier badge: 6px (existing gap value already in list row template)
-- Extracted key-fact line bottom margin: 6px (matches existing preview line margin)
+- Badge row gap between category badge and tier badge: 8px (sm)
+- Extracted key-fact line bottom margin: 8px (sm)
+- Tone chip padding: 8px block (sm) / 12px inline (md-adjacent — nearest 4-point value)
+- Tier-lc-suffix margin-left: 4px (xs)
+- Draft-skip-link text-underline-offset: 4px (xs)
 
 ---
 
@@ -57,12 +60,14 @@ Source: Skill (sketch-findings-NeuralInbox) — three font families locked.
 
 | Role | Family | Size | Weight | Line Height | Usage |
 |------|--------|------|--------|-------------|-------|
-| UI labels / body | Syne | 13px | 400 | 1.5 | Tone chip labels, draft attribution label, "Write yourself" link |
-| Metadata / badges | IBM Plex Mono | 10px | 600 | 1 | Tier badge label ("Rule", "AI", "AI ?", "Failed"), attribution footer |
+| UI labels / body | Syne | 13px | 400 | 1.5 | Tone chip labels, draft attribution label, "Write yourself" link, skip link |
+| Metadata / badges | IBM Plex Mono | 10px | 600 | 1 | Tier badge label ("Rule", "AI", "AI ?", "Failed"), attribution footer label |
 | Extracted key fact | IBM Plex Mono | 11px | 400 | 1.3 | 3rd line in email list row for travel/financial/meeting_request |
 | Email body (existing) | Literata | 14px | 400 | 1.8 | Draft textarea content (no change) |
 | Attribution footer | IBM Plex Mono | 11px | 400 | 1 | "AI by [Provider] · [latency]ms" |
 | Low-confidence suffix | IBM Plex Mono | 10px | 600 | 1 | "?" character within "AI ?" badge — color: var(--accent-amber) |
+
+Font size scale (4 sizes max): 10px | 11px | 13px | 14px. No 12px size — all Syne UI elements (tone chips, skip link) use 13px.
 
 Letter-spacing on tier badge: 0.05em (matches existing `.badge` class).
 Text transform on tier badge: uppercase (matches existing `.badge` class).
@@ -77,6 +82,7 @@ Source: Skill (sketch-findings-NeuralInbox) + existing CSS variables in `public/
 |------|----------|-----|-------|
 | Dominant (60%) | `--bg-base` | #f0f2f7 | All surfaces, email list panel, detail panel |
 | Secondary (30%) | `--bg-panel` | #ffffff | Sidebar, panel headers |
+| Raised surface | `--bg-raised` | #e8ecf5 | Tone chip default background (declared in app.css line 10) |
 | AI accent (10%) | `--accent-blue` (`var(--accent-indigo)` in sketch) | #3b82f6 | AI tier badge dot + text |
 | Rule accent | `--accent-green` | #10b981 | Rule tier badge dot + text |
 | Failed accent | `--accent-red` | #ef4444 | Failed tier badge dot + text |
@@ -90,6 +96,8 @@ Accent reserved for:
 - `--accent-green` (Rule tier badge dot and text only)
 - `--accent-red` (Failed tier badge dot and text only)
 - `--accent-amber` (low-confidence "?" suffix, low-confidence badge background tint at 10% opacity)
+
+`--bg-raised` (#e8ecf5) is an existing codebase variable (app.css :root). It is the tone chip default background — slightly elevated above `--bg-base` (#f0f2f7), producing the neomorphic raised-surface feel. No new declaration needed; reference as-is.
 
 Neomorphic shadow color additions (new CSS custom properties to add to `:root`):
 
@@ -134,8 +142,8 @@ For `low_confidence = 1` with source `llm` or `fallback`:
 ```css
 /* Tier dot — shared */
 .tier-dot {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   display: inline-block;
   margin-right: 4px;
@@ -165,7 +173,7 @@ For `low_confidence = 1` with source `llm` or `fallback`:
 }
 .tier-lc-suffix {
   color: var(--accent-amber);
-  margin-left: 2px;
+  margin-left: 4px;
 }
 
 /* Failed tier — red, MUST be convex (constraint from sketch-findings) */
@@ -250,7 +258,7 @@ Discretion applied: departure_date preferred over PNR (from CONTEXT.md discretio
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
   line-height: 1.3;
 }
 ```
@@ -387,12 +395,12 @@ Discretion applied: departure_date preferred over PNR (from CONTEXT.md discretio
 
 .tone-chip {
   font-family: 'Syne', sans-serif;
-  font-size: 12px;
-  font-weight: 500;
-  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 12px;
   border-radius: 9999px;
   border: none;
-  background: var(--bg-raised);
+  background: var(--bg-raised);  /* #e8ecf5 — existing codebase variable */
   color: var(--text-secondary);
   cursor: pointer;
   box-shadow: var(--shadow-convex-sm);
@@ -429,12 +437,12 @@ Discretion applied: departure_date preferred over PNR (from CONTEXT.md discretio
   background: none;
   border: none;
   font-family: 'Syne', sans-serif;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-muted);
   cursor: pointer;
   padding: 0;
   text-decoration: underline;
-  text-underline-offset: 3px;
+  text-underline-offset: 4px;
   transition: color 150ms;
 }
 .draft-skip-link:hover { color: var(--text-secondary); }
@@ -498,7 +506,14 @@ New CSS custom properties to add to `:root` in `public/css/app.css`:
 --radius-pill: 9999px;
 ```
 
-Existing variables: unchanged. All existing `--bg-*`, `--text-*`, `--accent-*`, `--border` variables remain as-is.
+Existing variables: unchanged. All existing `--bg-*`, `--text-*`, `--accent-*`, `--border` variables remain as-is. `--bg-raised` (#e8ecf5) is already declared in app.css and is used by `.tone-chip` background without modification.
+
+Spacing corrections applied in this spec (all values on 4-point grid):
+- Tier dot: 8px × 8px (was 7px — corrected to nearest 4-point value)
+- Key-fact margin-bottom: 8px (was 6px — corrected)
+- Tone chip padding: 8px block / 12px inline (was 6px / 14px — corrected)
+- Tier-lc-suffix margin-left: 4px (was 2px — corrected)
+- Draft-skip-link text-underline-offset: 4px (was 3px — corrected)
 
 ---
 
@@ -619,6 +634,9 @@ Derived from sketch-findings-NeuralInbox constraints. These patterns are explici
 | Model name in attribution footer | model_id not stored in llm_logs — deferred. Do not fabricate a model name. |
 | Extracted key fact for fyi / legal / other / pitch / rewards_awards | Violates D-08 — only travel, financial, meeting_request categories |
 | JS tooltip for urgency | Violates D-05 — native CSS `title` attribute only, zero JS |
+| Non-4-point spacing values | All px values must be multiples of 4. Prohibited: 2px, 3px, 6px, 7px, 14px for any new CSS in this phase. |
+| Font-weight: 500 on any new element | Only 400 and 600 are declared weights. Tone chips and all interactive elements use 600. |
+| 12px font-size for Syne elements | Collapsed into 13px. All Syne UI elements (tone chips, skip link) use 13px. |
 
 ---
 
@@ -654,7 +672,7 @@ Derived from sketch-findings-NeuralInbox constraints. These patterns are explici
 | CONTEXT.md (D-01 through D-17) | 17 locked decisions — all pre-populated |
 | REQUIREMENTS.md (UI-01 through UI-07) | All 7 requirements traced |
 | sketch-findings-NeuralInbox/SKILL.md | Shadow scale, fonts, background, convex/concave rules, border-radius minimums |
-| public/css/app.css (codebase scan) | Existing variables, badge pattern, font imports, spacing observed |
+| public/css/app.css (codebase scan) | Existing variables (--bg-raised confirmed #e8ecf5), badge pattern, font imports, spacing observed |
 | src/routes/api.js (codebase scan) | Existing list row template, detail template, draft editor mount point |
 | User input | 0 questions needed — all decisions pre-populated from upstream artifacts |
 
@@ -662,4 +680,5 @@ Derived from sketch-findings-NeuralInbox constraints. These patterns are explici
 
 *Phase: 5 — AI Output UI*
 *UI-SPEC created: 2026-05-18*
+*UI-SPEC revised: 2026-05-18 — checker fixes applied (--bg-raised declared, font sizes collapsed to 4, weights reduced to 2, spacing corrected to 4-point grid)*
 *Consumed by: gsd-ui-checker, gsd-planner, gsd-executor, gsd-ui-auditor*
