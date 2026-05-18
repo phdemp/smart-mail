@@ -86,6 +86,52 @@ function parsedExtractedData(str) {
   try { return JSON.parse(str || '{}'); } catch { return {}; }
 }
 
+function tierBadge(source, lowConfidence) {
+  const src = (source || '').toLowerCase();
+  let cls, label;
+  if (src === 'rule' || src === 'rules') {
+    cls = 'badge-tier-rule'; label = 'Rule';
+  } else if (src === 'failed') {
+    cls = 'badge-tier-failed'; label = 'Failed';
+  } else {
+    // llm, fallback, empty, null, or any unknown value → AI
+    cls = 'badge-tier-ai';
+    label = lowConfidence
+      ? `AI <span class="tier-lc-suffix">?</span>`
+      : 'AI';
+    if (lowConfidence) cls += ' badge-tier-ai--uncertain';
+  }
+  return `<span class="badge ${cls}"><span class="tier-dot"></span>${label}</span>`;
+}
+
+function keyFactLine(cat, extractedDataStr) {
+  const d = parsedExtractedData(extractedDataStr);
+  let fact = '';
+  if (cat === 'travel') {
+    if (d.departure_date) {
+      fact = `Flight · ${escHtml(d.flight_number || '')} · ${escHtml(d.departure_date)}`
+        .replace(' ·  ·', ' ·')
+        .replace(/·\s+·/g, '·');
+    } else if (d.pnr) {
+      fact = `PNR · ${escHtml(d.pnr)}`;
+    }
+  } else if (cat === 'financial') {
+    if (d.amount_due) {
+      fact = d.due_date
+        ? `Due · ${escHtml(d.amount_due)} · ${escHtml(d.due_date)}`
+        : `Due · ${escHtml(d.amount_due)}`;
+    }
+  } else if (cat === 'meeting_request') {
+    if (d.meeting_date) {
+      fact = d.meeting_time
+        ? `Meeting · ${escHtml(d.meeting_date)} · ${escHtml(d.meeting_time)}`
+        : `Meeting · ${escHtml(d.meeting_date)}`;
+    }
+  }
+  // All other categories (fyi, legal, other, pitch_deck, rewards_awards) → empty string per D-08
+  return fact ? `<div class="email-key-fact">${fact}</div>` : '';
+}
+
 // ─── Account Routes ──────────────────────────────────────────────────────────
 
 router.post('/api/account/save', async (req, res) => {
@@ -350,7 +396,7 @@ router.get('/api/emails', (req, res) => {
   }
 
   const emails = db.prepare(`
-    SELECT e.*, c.category, c.urgency, c.urgency_reason, c.summary, c.extracted_data, c.suggested_tone
+    SELECT e.*, c.category, c.urgency, c.urgency_reason, c.summary, c.extracted_data, c.suggested_tone, c.source, c.low_confidence
     FROM emails e
     LEFT JOIN classifications c ON c.email_id = e.id
     ${whereClause}
@@ -389,6 +435,8 @@ router.get('/api/emails', (req, res) => {
     const color = avatarColor(email.from_name || email.from_address);
     const ini = initials(email.from_name || email.from_address);
     const preview = (email.summary || email.body_text || '').substring(0, 120).replace(/\s+/g, ' ');
+    const tierBadgeHtml = tierBadge(email.source, email.low_confidence);
+    const keyFact = keyFactLine(cat, email.extracted_data);
 
     return `
       <div class="email-item urgency-${escHtml(urg)}"
@@ -406,8 +454,10 @@ router.get('/api/emails', (req, res) => {
           </div>
           <div style="font-size:13px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px;">${escHtml(email.subject)}</div>
           <div style="font-size:12px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:6px;font-family:'Literata',serif;">${escHtml(preview)}</div>
+          ${keyFact}
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
             <span class="badge badge-${escHtml(cat)}">${escHtml(categoryLabel(cat))}</span>
+            ${tierBadgeHtml}
             ${urg === 'urgent' ? '<span style="font-size:10px;color:var(--accent-red);font-family:\'IBM Plex Mono\',monospace;font-weight:600;">URGENT</span>' : ''}
             ${email.is_starred ? '<span style="font-size:11px;">⭐</span>' : ''}
           </div>
