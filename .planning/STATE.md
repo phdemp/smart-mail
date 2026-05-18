@@ -68,5 +68,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-05-15
-Stopped at: Phase 4 execution verified — ready to plan Phase 5
-Resume file: .planning/phases/04-provider-observability/04-VERIFICATION.md
+Stopped at: Phase 5 context gathered — ready to plan
+Resume file: .planning/phases/05-ai-output-ui/05-CONTEXT.md
