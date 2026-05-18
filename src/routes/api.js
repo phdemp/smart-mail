@@ -109,9 +109,9 @@ function keyFactLine(cat, extractedDataStr) {
   let fact = '';
   if (cat === 'travel') {
     if (d.departure_date) {
-      fact = `Flight · ${escHtml(d.flight_number || '')} · ${escHtml(d.departure_date)}`
-        .replace(' ·  ·', ' ·')
-        .replace(/·\s+·/g, '·');
+      fact = d.flight_number
+        ? `Flight · ${escHtml(d.flight_number)} · ${escHtml(d.departure_date)}`
+        : `Flight · ${escHtml(d.departure_date)}`;
     } else if (d.pnr) {
       fact = `PNR · ${escHtml(d.pnr)}`;
     }
