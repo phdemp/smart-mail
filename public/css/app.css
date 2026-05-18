@@ -314,19 +314,19 @@ body {
   display: inline-flex;
   align-items: center;
 }
-.badge-meeting_request { background: rgba(59,130,246,0.15);  color: #3b82f6; border: 1px solid rgba(59,130,246,0.3); }
-.badge-financial       { background: rgba(16,185,129,0.15);  color: #10b981; border: 1px solid rgba(16,185,129,0.3); }
-.badge-legal           { background: rgba(239,68,68,0.15);   color: #ef4444; border: 1px solid rgba(239,68,68,0.3); }
-.badge-travel          { background: rgba(167,139,250,0.15); color: #a78bfa; border: 1px solid rgba(167,139,250,0.3); }
-.badge-pitch_deck      { background: rgba(249,115,22,0.15);  color: #f97316; border: 1px solid rgba(249,115,22,0.3); }
-.badge-fyi             { background: rgba(107,114,128,0.15); color: #9ca3af; border: 1px solid rgba(107,114,128,0.3); }
-.badge-rewards_awards  { background: rgba(234,179,8,0.15);   color: #eab308; border: 1px solid rgba(234,179,8,0.3); }
-.badge-request         { background: rgba(251,146,60,0.15);  color: #fb923c; border: 1px solid rgba(251,146,60,0.3); }
-.badge-other           { background: rgba(100,116,139,0.15); color: #94a3b8; border: 1px solid rgba(100,116,139,0.3); }
+.badge-meeting_request { background: rgba(59,130,246,0.15);  color: var(--accent-blue);   border: 1px solid rgba(59,130,246,0.3); }
+.badge-financial       { background: rgba(16,185,129,0.15);  color: var(--accent-green);  border: 1px solid rgba(16,185,129,0.3); }
+.badge-legal           { background: rgba(239,68,68,0.15);   color: var(--accent-red);    border: 1px solid rgba(239,68,68,0.3); }
+.badge-travel          { background: rgba(167,139,250,0.15); color: var(--accent-purple); border: 1px solid rgba(167,139,250,0.3); }
+.badge-pitch_deck      { background: rgba(249,115,22,0.15);  color: var(--accent-orange); border: 1px solid rgba(249,115,22,0.3); }
+.badge-fyi             { background: rgba(107,114,128,0.15); color: var(--accent-slate);  border: 1px solid rgba(107,114,128,0.3); }
+.badge-rewards_awards  { background: rgba(234,179,8,0.15);   color: var(--accent-gold);   border: 1px solid rgba(234,179,8,0.3); }
+.badge-request         { background: rgba(251,146,60,0.15);  color: var(--accent-orange); border: 1px solid rgba(251,146,60,0.3); }
+.badge-other           { background: rgba(100,116,139,0.15); color: var(--accent-slate);  border: 1px solid rgba(100,116,139,0.3); }
 
 .badge-pending {
   background: rgba(148, 163, 184, 0.15);
-  color: #94a3b8;
+  color: var(--accent-slate);
   border: 1px solid rgba(148, 163, 184, 0.3);
   animation: pulse-pending 1.5s ease-in-out infinite;
 }
@@ -655,7 +655,7 @@ body {
 .banner-urgent {
   background: rgba(239, 68, 68, 0.12);
   border: 1px solid rgba(239, 68, 68, 0.3);
-  color: #ef4444;
+  color: var(--accent-red);
   padding: 10px 16px;
   border-radius: 8px;
   font-weight: 600;
@@ -665,7 +665,7 @@ body {
 .banner-warning {
   background: rgba(245, 158, 11, 0.12);
   border: 1px solid rgba(245, 158, 11, 0.3);
-  color: #f59e0b;
+  color: var(--accent-amber);
   padding: 10px 16px;
   border-radius: 8px;
   font-weight: 600;
@@ -720,7 +720,7 @@ body {
 .action-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
 .btn-accept  { background: var(--accent-green); color: #000; }
-.btn-decline { background: rgba(239,68,68,0.2); color: #ef4444; border: 1px solid rgba(239,68,68,0.4); }
+.btn-decline { background: rgba(239,68,68,0.2); color: var(--accent-red); border: 1px solid rgba(239,68,68,0.4); }
 .btn-primary { background: var(--accent-cyan); color: #000; }
 .btn-ghost   { background: var(--bg-raised); color: var(--text-secondary); border: 1px solid var(--border); }
 .btn-ghost:hover { border-color: var(--border-bright); color: var(--text-primary); }
